@@ -1,7 +1,7 @@
 import smbus as I2C
 import RPi.GPIO as GPIO
 import time
-from enum import Enum   # для создания нумерованных списков
+from enum import IntEnum   # для создания нумерованных списков
 import math
 
 ###
@@ -79,7 +79,7 @@ forwardMotor - для подключения драйвера моторов, у
 ###
 
 
-class PwmMode(Enum):    # список режимов работы
+class PwmMode(IntEnum):    # список режимов работы
     servo90 = 90        # серва 90 градусов
     servo180 = 180      # серва 180 градусов
     servo270 = 270      # серва 270 градусов
@@ -100,7 +100,7 @@ class Pwm:
         time.sleep(0.005)
         self._SetPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
         # словарь, содержащий номера каналов и выставленный режим
-        self.channel = {}
+        self._channel = {}
 
     def _WriteByte(self, register, value):  # запись 8битного значения в заданный регистр
         value = value & 0xFF
@@ -134,12 +134,15 @@ class Pwm:
         val = 0x06 & 0xFF
         self._i2c.write_byte(_PCA9685_ADDRESS, val)
 
-    def InitChannel(self, channel, value):
-        self.channel[channel] = value
+    def InitChannel(self, channel, value):  # инициализация канала в определенном режиме
+        if 0 <= channel <= 15:
+            self._channel[channel] = value
+        else:
+            print("No such channel.")
 
-    def SetChannel(self, channel, value):
+    def SetChannel(self, channel, value):   # установка значения канала в зависимости от режима
         try:
-            mode = self.channel[channel]
+            mode = self._channel[channel]
         except KeyError:
             print("Channel haven't been inited!")
             return
@@ -147,8 +150,8 @@ class Pwm:
         # то нужно устанавливать значение от 0 до максимального, задаваемого режимом
         if mode != PwmMode.reverseMotor:
             if value < 0: value = 0     # обрезаем крайние значения
-            if value > mode: value = mode
-            value *= 205/mode   # изменяем диапазон 0-mode -> 0-205
+            if value > mode.value: value = mode.value
+            value *= 205/mode.value     # изменяем диапазон 0-mode -> 0-205
             value += 205        # сдвигаем диапазон 0-205 -> 205-410
         else:   # если говорим о моторе с реверсом
             if value < -100: value = -100   # обрезаем диапазон
@@ -157,8 +160,6 @@ class Pwm:
             value *= 205/200    # чуть изменяем 0-200 -> 0-205
             value += 205    # сдвигаем 0-205 -> 205-410
         self._SetPwm(channel, int(value))  # устанавливаем значение
-
-
 
 
 ###
@@ -174,7 +175,7 @@ chanLed = 21
 class Gpio:
     def __init__(self):
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(chanButton, GPIO.IN, pull_up_down = GPIO.OFF)
+        GPIO.setup(chanButton, GPIO.IN, pull_up_down = GPIO.PUD_OFF)
         GPIO.setup(chanLed, GPIO.OUT, initial=GPIO.LOW)
 
     def ButtonAddEvent(self, foo):    # добавление функции, которая срабатывает при нажатии на кнопку
@@ -189,5 +190,3 @@ class Gpio:
 
     def CleanUp(self):
         GPIO.cleanup()
-
-
