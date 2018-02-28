@@ -19,18 +19,26 @@ def ServoMover():
             time.sleep(0.01)
 
 
-adc = RPiPWM.Battery()
+adc = RPiPWM.Battery(vRef=3.28, gain=7.66)
+print("Starting ADC")
+adc.start()
+value = 8.65
+print("Calibrating ADC with value %d" % value)
+# adc.Calibrate(value)
+print("ADC started")
 
 gpio = RPiPWM.Gpio()
 
-def Informator(a):
-    print("Voltage: %f" % adc.GetVoltage())
-    gpio.LedToggle()
 
+def Informator():
+    while not exit:
+        print("Voltage: %.2f" % adc.GetVoltageFiltered())
+        time.sleep(1)
+    # gpio.LedToggle()
 
 gpio.ButtonAddEvent(Informator)
 
-t1 = threading.Thread(target=ServoMover)
+t1 = threading.Thread(target=Informator)
 t1.start()
 t1.join()
 time.sleep(5)

@@ -3,6 +3,7 @@ import RPi.GPIO as GPIO
 import time
 from enum import IntEnum   # для создания нумерованных списков
 import math
+import threading
 
 ###
 '''
@@ -17,24 +18,50 @@ GetBattery - Вызывает метод GetVoltage, домножает полу
 ###
 
 
-class Battery:
+class Battery(threading.Thread):
     def __init__(self, vRef=3.3, gain=7.66):
+        threading.Thread.__init__(self)
         self._addr = 0x4D
         self._vRef = vRef
         self._gain = gain
         self._i2c = I2C.SMBus(1)
+        threading.Thread.__init__(self)
+        self._exit = False  # флаг завершения тредов
+        self._filteredVoltage = 0   # отфильтрованное значение напряжения
+        self._K = 0.1   # коэффициент фильтрации
 
-    def _Read(self):
+    def run(self):
+        while not self._exit:    # 20 раз в секунду опрашивает АЦП, фильтрует значение
+            self._filteredVoltage = self._filteredVoltage * (1 - self._K) + self.GetVoltageInstant() * self._K
+            time.sleep(0.05)
+
+    def _Read(self):    # чтение показаний АЦП
         reading = self._i2c.read_i2c_block_data(self._addr, 0x00, 2)
         return (reading[0] << 8) + reading[1]
 
-    def _GetRefVoltage(self):
+    def _GetRefVoltage(self):   # преобразование к напряжению, относительно опорного (после предделителя)
         voltage = (self._Read() / 4095) * self._vRef  # 4095 - число разрядов АЦП
         return voltage
 
-    def GetVoltage(self):
+    def GetVoltageInstant(self):  # возвращает моментальное значение напряжения аккумулятора с АЦП (до предделителя)
         battery = self._GetRefVoltage() * self._gain
         return round(battery, 2)
+
+    def Stop(self):     # останавливает треды
+        self._exit = True
+
+    def GetVoltageFiltered(self):   # возвращаяет отфильтрованное значение напряжения
+        return self._filteredVoltage
+
+    def Calibrate(self, exactVoltage):  # подгоняет коэффциент делителя напряжения
+        value = 0
+        for i in range(100):
+            value += self._GetRefVoltage()
+            time.sleep(0.01)
+        value /= 100
+        self._gain = exactVoltage/value
+        print("Calibrated value: %d" % self._gain)
+    # TODO: возможно сделать калибровку более точной (но вроде как без нее все работает и так)
 
 
 # Регистры для работы с PCA9685
@@ -79,12 +106,12 @@ forwardMotor - для подключения драйвера моторов, у
 ###
 
 
-class PwmMode(IntEnum):    # список режимов работы
-    servo90 = 90        # серва 90 градусов
-    servo180 = 180      # серва 180 градусов
-    servo270 = 270      # серва 270 градусов
-    forwardMotor = 100  # мотор без реверса
-    reverseMotor = 4    # мотор с реверсом
+class PwmMode(IntEnum):     # список режимов работы
+    servo90 = 90            # серва 90 градусов
+    servo180 = 180          # серва 180 градусов
+    servo270 = 270          # серва 270 градусов
+    forwardMotor = 100      # мотор без реверса
+    reverseMotor = 4        # мотор с реверсом
 
 
 class Pwm:
@@ -138,14 +165,13 @@ class Pwm:
         if 0 <= channel <= 15:
             self._channel[channel] = value
         else:
-            print("No such channel.")
+            raise ValueError("Channel number must be from 0 to 15 (inclusive).")
 
     def SetChannel(self, channel, value):   # установка значения канала в зависимости от режима
         try:
             mode = self._channel[channel]
         except KeyError:
-            print("Channel haven't been inited!")
-            return
+            raise ValueError("Channel haven't been inited!")
         # если канал установлен на режим работы "в одну сторону" - сервы или мотор без реверса
         # то нужно устанавливать значение от 0 до максимального, задаваемого режимом
         if mode != PwmMode.reverseMotor:
@@ -160,33 +186,34 @@ class Pwm:
             value *= 205/200    # чуть изменяем 0-200 -> 0-205
             value += 205    # сдвигаем 0-205 -> 205-410
         self._SetPwm(channel, int(value))  # устанавливаем значение
+    # TODO: убедиться с разными сервами, что все работает. Возможно добавить режим торможения для мотора с реверсом.
 
 
 ###
 '''
 Класс для работы с кнопкой и светодиодом.
-При инициализации указывается на каком пине нужно слушать кнопку, на каком - висит светодиод.
+При создании класса инициализируются пины.
 '''
 ###
-chanButton = 20
-chanLed = 21
+_chanButton = 20
+_chanLed = 21
 
 
 class Gpio:
     def __init__(self):
         GPIO.setmode(GPIO.BCM)
-        GPIO.setup(chanButton, GPIO.IN, pull_up_down = GPIO.PUD_OFF)
-        GPIO.setup(chanLed, GPIO.OUT, initial=GPIO.LOW)
+        GPIO.setup(_chanButton, GPIO.IN, pull_up_down = GPIO.PUD_OFF)
+        GPIO.setup(_chanLed, GPIO.OUT, initial=GPIO.LOW)
 
     def ButtonAddEvent(self, foo):    # добавление функции, которая срабатывает при нажатии на кнопку
         if foo is not None:
             GPIO.add_event_detect(20, GPIO.FALLING, callback = foo, bouncetime = 200)
 
     def LedSet(self, value):    # включает или выключает светодиод в зависимости от заданного значения
-        GPIO.output(chanLed, value)
+        GPIO.output(_chanLed, value)
 
     def LedToggle(self):    # переключает состояние светодиода
-        GPIO.output(chanLed, not GPIO.input(chanLed))
+        GPIO.output(_chanLed, not GPIO.input(_chanLed))
 
     def CleanUp(self):
         GPIO.cleanup()
