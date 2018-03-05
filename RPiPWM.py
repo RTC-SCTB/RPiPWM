@@ -51,7 +51,7 @@ class Battery(threading.Thread):
         self._exit = True
 
     def GetVoltageFiltered(self):   # возвращаяет отфильтрованное значение напряжения
-        return self._filteredVoltage
+        return round(self._filteredVoltage, 2)
 
     def Calibrate(self, exactVoltage):  # подгоняет коэффциент делителя напряжения
         value = 0
@@ -60,8 +60,8 @@ class Battery(threading.Thread):
             time.sleep(0.01)
         value /= 100
         self._gain = exactVoltage/value
-        print("Calibrated value: %d" % self._gain)
     # TODO: возможно сделать калибровку более точной (но вроде как без нее все работает и так)
+
 
 ###
 '''
@@ -111,6 +111,7 @@ class PwmMode(IntEnum):     # список режимов работы
     servo270 = 270          # серва 270 градусов
     forwardMotor = 100      # мотор без реверса
     reverseMotor = 4        # мотор с реверсом
+    onOff = 5               # вкл/выкл пина
 
 
 class Pwm:
@@ -172,20 +173,32 @@ class Pwm:
         except KeyError:
             raise ValueError("Channel haven't been inited!")
         # если канал установлен на режим работы "в одну сторону" - сервы или мотор без реверса
-        # то нужно устанавливать значение от 0 до максимального, задаваемого режимом
-        if mode != PwmMode.reverseMotor:
-            if value < 0: value = 0     # обрезаем крайние значения
-            if value > mode.value: value = mode.value
-            value *= 205/mode.value     # изменяем диапазон 0-mode -> 0-205
-            value += 205        # сдвигаем диапазон 0-205 -> 205-410
-        else:   # если говорим о моторе с реверсом
-            if value < -100: value = -100   # обрезаем диапазон
-            if value > 100: value = 100
+        if mode == PwmMode.reverseMotor:  # если говорим о моторе с реверсом
+            if value < -100:    # обрезаем диапазон
+                value = -100
+            if value > 100:
+                value = 100
             value += 100    # сдвигаем диапазон -100-100 -> 0-200
             value *= 205/200    # чуть изменяем 0-200 -> 0-205
             value += 205    # сдвигаем 0-205 -> 205-410
+        elif mode == PwmMode.onOff:
+            if value < 0:
+                raise ValueError("Value must be True or False for On/Off mode")
+            if value is True:   # если надо включить (True) - зажигаем полностью
+                value = 4095
+            else:               # иначе выключаем
+                value = 0
+        else:
+            if value < 0:   # обрезаем крайние значения
+                value = 0
+            if value > mode.value:
+                value = mode.value
+            value *= 205/mode.value     # изменяем диапазон 0-mode -> 0-205
+            value += 205        # сдвигаем диапазон 0-205 -> 205-410
+        # то нужно устанавливать значение от 0 до максимального, задаваемого режимом
         self._SetPwm(channel, int(value))  # устанавливаем значение
     # TODO: убедиться с разными сервами, что все работает. Возможно добавить режим торможения для мотора с реверсом.
+
 
 ###
 '''
@@ -228,9 +241,9 @@ _SSD1306_LEFT_HORIZONTAL_SCROLL = 0x27
 _SSD1306_VERTICAL_AND_RIGHT_HORIZONTAL_SCROLL = 0x29
 _SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL = 0x2A
 
-# TODO: тщательно все перепроверить. Точки по всему дисплею, плывут столбцы текста.
+
 class SSD1306Base(object):  # Базовый класс для работы с OLED дисплеями на базе SSD1306
-    def __init__(self, width, height, i2cBus = None, i2cAddr = _SSD1306_I2C_ADDRESS):
+    def __init__(self, width, height, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
         self.width = width  # ширина и высота дисплея
         self.height = height
         self._pages = height//8     # строки дисплея
@@ -294,7 +307,7 @@ class SSD1306Base(object):  # Базовый класс для работы с O
 
     def SetContrast(self, contrast):    # установка контрастности дисплея от 0 до 255
         if contrast < 0 or contrast > 255:
-            raise  ValueError('Contrast must be value from 0 to 255 (inclusive).')
+            raise ValueError('Contrast must be value from 0 to 255 (inclusive).')
         self.Command(_SSD1306_SETCONTRAST)
         self.Command(contrast)
 
@@ -310,16 +323,17 @@ class SSD1306Base(object):  # Базовый класс для работы с O
         value = value & 0xFF
         self._i2c.write_byte_data(_SSD1306_I2C_ADDRESS, register, value)
 
-    def _WriteList(self, register, data):
-        self._i2c.write_block_data(_SSD1306_I2C_ADDRESS, register, data)
-
+    def _WriteList(self, register, data):   # запись списка байтов в заданный регистр
+        for i in range(len(data)):
+            self._i2c.write_byte_data(_SSD1306_I2C_ADDRESS, register, data[i])
 
     def _ReadU8(self, register):    # чтение unsigned byte
         result = self._i2c.read_byte_data(_SSD1306_I2C_ADDRESS, register) & 0xFF
+        return result
 
 
 class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pix
-    def __init__(self, i2cBus = None, i2cAddr = _SSD1306_I2C_ADDRESS):
+    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
         # вызываем конструктор класса
         super(SSD1306_128_64, self).__init__(128, 64, i2cBus, i2cAddr)
 
@@ -361,7 +375,7 @@ class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pi
 
 
 class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pix
-    def __init__(self, i2cBus = None, i2cAddr = _SSD1306_I2C_ADDRESS):
+    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
         # Вызываем конструктор класса
         super(SSD1306_128_32, self).__init__(128, 32, i2cBus, i2cAddr)
 
@@ -400,7 +414,7 @@ class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pi
 
 
 class SSD1306_96_16(SSD1306Base):
-    def __init__(self, i2cBus = None, i2cAddr = _SSD1306_I2C_ADDRESS):
+    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
         # Вызываем конструктор класса
         super(SSD1306_96_16, self).__init__(96, 16, i2cBus, i2cAddr)
 
@@ -449,12 +463,14 @@ _chanLed = 21
 
 
 class Gpio:
-    def __init__(self):
+    def __init__(self):   # флаг, по которому будем очищать (или нет) GPIO
+        GPIO.setwarnings(False)  # очищаем, если кто-то еще использовал GPIO воизбежание ошибок
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(_chanButton, GPIO.IN, pull_up_down = GPIO.PUD_OFF)
         GPIO.setup(_chanLed, GPIO.OUT, initial=GPIO.LOW)
 
-    def ButtonAddEvent(self, foo):    # добавление функции, которая срабатывает при нажатии на кнопку
+    # добавление функции, которая срабатывает при нажатии на кнопку, у функции обязательно должен быть один аргумент, который ему передает GPIO (см. пример)
+    def ButtonAddEvent(self, foo):
         if foo is not None:
             GPIO.add_event_detect(20, GPIO.FALLING, callback = foo, bouncetime = 200)
 
