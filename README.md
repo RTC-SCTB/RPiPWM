@@ -6,9 +6,17 @@
 Библиотека содержит классы для работы с однокональным ацп MCP3221, который измеряет напряжение питания,
 микросхемой PCA9685, который создает ШИМ сигнал на 16 каналах, для управления светодиодом и кнопкой на плате,
 при помощи модуля RPi.GPIO, а также для работы с дисплеем на базе микросхемы SSD1336.  
-Пример работы в файле example.py.
+Пример работы в файле **example.py**.  
+Подробное описание функций в файле **Description**.
+
+### Необходимые модули
+Стандартные: time, enum, math, threading.  
+Дополнительные:  
+- RPi.GPIO - для работы с GPIO Raspberry Pi
+- smbus - для работы с шиной i2c
+
 
 ### Полезные ссылки
-- Даташит для [MCP3221](http://ww1.microchip.com/downloads/en/DeviceDoc/20001732E.pdf);
-- Даташит для [PCA9685](https://cdn-shop.adafruit.com/datasheets/PCA9685.pdf);
-- Даташит для [SSD1336](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf).
+- Даташит для [MCP3221](http://ww1.microchip.com/downloads/en/DeviceDoc/20001732E.pdf)
+- Даташит для [PCA9685](https://cdn-shop.adafruit.com/datasheets/PCA9685.pdf)
+- Даташит для [SSD1336](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf)

@@ -47,7 +47,7 @@ class Battery(threading.Thread):
         battery = self._ReadConverted() * self._gain
         return round(battery, 2)
 
-    def Stop(self):     # останавливает треды
+    def stop(self):     # останавливает треды
         self._exit = True
 
     def GetVoltageFiltered(self):   # возвращаяет отфильтрованное значение напряжения
@@ -256,26 +256,26 @@ class SSD1306Base(object):  # Базовый класс для работы с O
     def _Initialize(self):
         raise NotImplementedError
 
-    def Command(self, c):  # Отправка байта команды дисплею
+    def _Command(self, c):  # Отправка байта команды дисплею
         control = 0x00
         self._Write8(control, c)
 
-    def Data(self, c):  # Отправка байта данных дисплею
+    def _Data(self, c):  # Отправка байта данных дисплею
         control = 0x40
         self._Write8(control, c)
 
     def Begin(self, vccstate=_SSD1306_SWITCHCAPVCC):    # инициализация дисплея
         self._vccstate = vccstate
         self._Initialize()
-        self.Command(_SSD1306_DISPLAYON)
+        self._Command(_SSD1306_DISPLAYON)
 
     def Display(self):  # вывод программного буффера дисплея на физическое устройство
-        self.Command(_SSD1306_COLUMNADDR)   # задаем нумерацию столбцов
-        self.Command(0)                     # Начало столбцов (0 = сброс)
-        self.Command(self.width-1)          # адрес последнего столбца
-        self.Command(_SSD1306_PAGEADDR)     # задаем адрес страниц (строк)
-        self.Command(0)                     # Начало строк (0 = сброс)
-        self.Command(self._pages-1)         # адрес последней строки
+        self._Command(_SSD1306_COLUMNADDR)   # задаем нумерацию столбцов
+        self._Command(0)                     # Начало столбцов (0 = сброс)
+        self._Command(self.width - 1)          # адрес последнего столбца
+        self._Command(_SSD1306_PAGEADDR)     # задаем адрес страниц (строк)
+        self._Command(0)                     # Начало строк (0 = сброс)
+        self._Command(self._pages - 1)         # адрес последней строки
         # Выводим буффер данных
         for i in range(0, len(self._buffer), 16):
             control = 0x40
@@ -305,19 +305,24 @@ class SSD1306Base(object):  # Базовый класс для работы с O
     def Clear(self):    # очищает буффер изображения
         self._buffer = [0]*(self.width*self._pages)
 
-    def SetContrast(self, contrast):    # установка контрастности дисплея от 0 до 255
+    def SetBrightness(self, contrast):    # установка яркости дисплея от 0 до 255
         if contrast < 0 or contrast > 255:
             raise ValueError('Contrast must be value from 0 to 255 (inclusive).')
-        self.Command(_SSD1306_SETCONTRAST)
-        self.Command(contrast)
+        self._Command(_SSD1306_SETCONTRAST)
+        self._Command(contrast)
 
-    def Dim(self, dim):     # корректировка контрастности дисплея (пока не очень понял как оно работает!)
+    # Подстраивает значение яркости. входное значение True или False.
+    # Если True - задает значение в зависимости от источника питания (внешний, или от шины)
+    # Если False - опускает до нуля
+    # ИМХО - бесполезная функция, когда есть предыдущая
+    def _Dim(self, dim):
         contrast = 0
         if not dim:
             if self._vccstate == _SSD1306_EXTERNALVCC:
                 contrast = 0x9F
             else:
                 contrast = 0xCF
+        self.SetBrightness(contrast)
 
     def _Write8(self, register, value):  # запись 8битного значения в заданный регистр
         value = value & 0xFF
@@ -339,39 +344,39 @@ class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pi
 
     def _Initialize(self):
         # инициализация конкретно для размера 128x64
-        self.Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self.Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self.Command(0x80)                          # предлагаемоое соотношение 0x80
-        self.Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self.Command(0x3F)
-        self.Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self.Command(0x0)                           # без отступов
-        self.Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self.Command(_SSD1306_CHARGEPUMP)           # 0x8D
+        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._Command(0x80)                          # предлагаемоое соотношение 0x80
+        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._Command(0x3F)
+        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._Command(0x0)                           # без отступов
+        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x10)
+            self._Command(0x10)
         else:
-            self.Command(0x14)
-        self.Command(_SSD1306_MEMORYMODE)           # 0x20
-        self.Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self.Command(_SSD1306_SEGREMAP | 0x1)
-        self.Command(_SSD1306_COMSCANDEC)
-        self.Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self.Command(0x12)
-        self.Command(_SSD1306_SETCONTRAST)          # 0x81
+            self._Command(0x14)
+        self._Command(_SSD1306_MEMORYMODE)           # 0x20
+        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._Command(_SSD1306_SEGREMAP | 0x1)
+        self._Command(_SSD1306_COMSCANDEC)
+        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._Command(0x12)
+        self._Command(_SSD1306_SETCONTRAST)          # 0x81
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x9F)
+            self._Command(0x9F)
         else:
-            self.Command(0xCF)
-        self.Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._Command(0xCF)
+        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x22)
+            self._Command(0x22)
         else:
-            self.Command(0xF1)
-        self.Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self.Command(0x40)
-        self.Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self.Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._Command(0xF1)
+        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._Command(0x40)
+        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
 class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pix
@@ -381,36 +386,36 @@ class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pi
 
     def _Initialize(self):
         # Инициализация конкретно для размера 128x32 pix
-        self.Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self.Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self.Command(0x80)                          # предлагаемоое соотношение 0x80
-        self.Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self.Command(0x1F)
-        self.Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self.Command(0x0)                           # без отступов
-        self.Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self.Command(_SSD1306_CHARGEPUMP)           # 0x8D
+        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._Command(0x80)                          # предлагаемоое соотношение 0x80
+        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._Command(0x1F)
+        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._Command(0x0)                           # без отступов
+        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x10)
+            self._Command(0x10)
         else:
-            self.Command(0x14)
-        self.Command(_SSD1306_MEMORYMODE)           # 0x20
-        self.Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self.Command(_SSD1306_SEGREMAP | 0x1)
-        self.Command(_SSD1306_COMSCANDEC)
-        self.Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self.Command(0x02)
-        self.Command(_SSD1306_SETCONTRAST)          # 0x81
-        self.Command(0x8F)
-        self.Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._Command(0x14)
+        self._Command(_SSD1306_MEMORYMODE)           # 0x20
+        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._Command(_SSD1306_SEGREMAP | 0x1)
+        self._Command(_SSD1306_COMSCANDEC)
+        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._Command(0x02)
+        self._Command(_SSD1306_SETCONTRAST)          # 0x81
+        self._Command(0x8F)
+        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x22)
+            self._Command(0x22)
         else:
-            self.Command(0xF1)
-        self.Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self.Command(0x40)
-        self.Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self.Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._Command(0xF1)
+        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._Command(0x40)
+        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
 class SSD1306_96_16(SSD1306Base):
@@ -420,36 +425,36 @@ class SSD1306_96_16(SSD1306Base):
 
     def _Initialize(self):
         # Инициализация конкретно для размера 96x16 pix
-        self.Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self.Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self.Command(0x60)                          # предлагаемоое соотношение 0x60
-        self.Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self.Command(0x0F)
-        self.Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self.Command(0x0)                           # без отступов
-        self.Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self.Command(_SSD1306_CHARGEPUMP)           # 0x8D
+        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._Command(0x60)                          # предлагаемоое соотношение 0x60
+        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._Command(0x0F)
+        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._Command(0x0)                           # без отступов
+        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x10)
+            self._Command(0x10)
         else:
-            self.Command(0x14)
-        self.Command(_SSD1306_MEMORYMODE)           # 0x20
-        self.Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self.Command(_SSD1306_SEGREMAP | 0x1)
-        self.Command(_SSD1306_COMSCANDEC)
-        self.Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self.Command(0x02)
-        self.Command(_SSD1306_SETCONTRAST)          # 0x81
-        self.Command(0x8F)
-        self.Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._Command(0x14)
+        self._Command(_SSD1306_MEMORYMODE)           # 0x20
+        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._Command(_SSD1306_SEGREMAP | 0x1)
+        self._Command(_SSD1306_COMSCANDEC)
+        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._Command(0x02)
+        self._Command(_SSD1306_SETCONTRAST)          # 0x81
+        self._Command(0x8F)
+        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self.Command(0x22)
+            self._Command(0x22)
         else:
-            self.Command(0xF1)
-        self.Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self.Command(0x40)
-        self.Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self.Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._Command(0xF1)
+        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._Command(0x40)
+        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
 ###
@@ -472,7 +477,7 @@ class Gpio:
     # добавление функции, которая срабатывает при нажатии на кнопку, у функции обязательно должен быть один аргумент, который ему передает GPIO (см. пример)
     def ButtonAddEvent(self, foo):
         if foo is not None:
-            GPIO.add_event_detect(20, GPIO.FALLING, callback = foo, bouncetime = 200)
+            GPIO.add_event_detect(_chanButton, GPIO.FALLING, callback = foo, bouncetime = 200)
 
     def LedSet(self, value):    # включает или выключает светодиод в зависимости от заданного значения
         GPIO.output(_chanLed, value)

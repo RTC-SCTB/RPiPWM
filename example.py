@@ -80,6 +80,7 @@ class Informer(threading.Thread):   # класс выводящий информ
         self.disp.Begin()       # инициализируем его
         self.disp.Clear()       # очищаем
         self.disp.Display()     # выводим пустой кадр
+        self.disp.SetBrightness(0)
         print("Creating ADC")
         self.adc = RPiPWM.Battery(vRef=3.28, gain=7.66)     # создаем объект, получающий показания с АЦП
         self.exit = False       # флаг для завершения тредов
@@ -121,6 +122,10 @@ class Informer(threading.Thread):   # класс выводящий информ
         # можно подгрузить шрифт в формате ttf, если он лежит в той же папке
         # font = ImageFont.truetype('BlaBla.ttf', 8)
         IP = self.GetIP()   # получаем информацию об IP адресе
+
+        brightness = 0    # текущее значение яркости дисплея
+        brightnessRev = False
+
         print("Starting display")
         while not self.exit:
             # очищаем изображение
@@ -129,17 +134,32 @@ class Informer(threading.Thread):   # класс выводящий информ
             cpuTemp = str(self.GetCpuTemperature())
             cpuLoad = str(self.GetCpuLoad())
             battery = str(self.GetBattery())
+
+            # циклично изменяем яркость дисплея от 0 до 250, потом обратно, с шагом 50
+            if brightnessRev:
+                brightness -= 50
+                if brightness < 0:
+                    brightness = 0
+                    brightnessRev = False
+            else:
+                brightness += 50
+                if brightness > 250:
+                    brightness = 250
+                    brightnessRev = True
+
             # формируем картинку для дисплея
             draw.text((x, top), "IP: "+IP, font=font, fill=255)
             draw.text((x, top + 8), "CPU: "+cpuLoad+" %, "+cpuTemp+"°C", font=font, fill=255)
             draw.text((x, top + 16), "Battery: "+battery+" V", font=font, fill=255)
+            draw.text((x, top + 24), "Brightness: "+str(brightness), font=font, fill=255)
+
+            self.disp.SetBrightness(brightness)   # меняем яркость
             # выводим изображение
             self.disp.Image(image)
             self.disp.Display()
-
             self.gpio.LedToggle()   # переключаем светодиод
-            time.sleep(1)
-        self.adc.Stop()
+            time.sleep(0.5)
+        self.adc.stop()
         print("ADC and Display stopped")
 
     def Stop(self):
