@@ -161,9 +161,9 @@ class Pwm:
         val = 0x06 & 0xFF
         self._i2c.write_byte(_PCA9685_ADDRESS, val)
 
-    def InitChannel(self, channel, value):  # инициализация канала в определенном режиме
+    def InitChannel(self, channel, mode):  # инициализация канала в определенном режиме
         if 0 <= channel <= 15:
-            self._channel[channel] = value
+            self._channel[channel] = mode
         else:
             raise ValueError("Channel number must be from 0 to 15 (inclusive).")
 

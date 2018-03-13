@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import RPiPWM
-import threading
 import time
 import os
 import psutil
@@ -8,166 +7,107 @@ from PIL import Image       # библиотеки для рисования н�
 from PIL import ImageDraw
 from PIL import ImageFont
 
+# создаем объект, который будет управлять ШИМ сигналами
+pwm = RPiPWM.Pwm()
+# номера каналов, куда какой объект будет подключен
+chanOnOff = 0
+chanSrv270 = 1
+# драйверы обычно генерируют свои 5 вольт, которые могут вернуть на плату
+# поэтому их стоит подключать к каналам 12 - 15
+chanRevMotor = 12
 
-class Pwm(threading.Thread):    # класс, показывающий работу с каналами ШИМ
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.pwm = RPiPWM.Pwm()
-        self.chanOnOff = 0
-        self.chanSrv270 = 1
-        self.chanRevMotor = 2
-        self.pwm.InitChannel(self.chanOnOff, RPiPWM.PwmMode.onOff)
-        self.pwm.InitChannel(self.chanSrv270, RPiPWM.PwmMode.servo270)
-        self.pwm.InitChannel(self.chanRevMotor, RPiPWM.PwmMode.reverseMotor)
-        print("Initing channels: %d - On/Off, %d - Servo270, %d - Reverse Motor"
-              % (self.chanOnOff, self.chanSrv270, self.chanRevMotor))
-        self.exit = False
+# инициализируем каналы
+pwm.InitChannel(chanOnOff, RPiPWM.PwmMode.onOff)
+pwm.InitChannel(chanSrv270, RPiPWM.PwmMode.servo270)
+pwm.InitChannel(chanRevMotor, RPiPWM.PwmMode.reverseMotor)
 
-    def run(self):
-        onOff = False
-        servo270 = 0
-        servo270Back = False    # флаг по которому будем определять что по диапазону пора идти обратно
-        servo270Step = 90   # шаг с которым будем увеличивать/уменьшать значение на канале
-        revMotor = 100
-        revMotorBack = False
-        revMotorStep = 50
-        print("Starting pwm channels")
-        while not self.exit:
-            if onOff:   # переключаем канал вкл/выкл
-                onOff = False
-            else:
-                onOff = True
+print("Initing channels: %d - On/Off, %d - Servo270, %d - Reverse Motor"
+              % (chanOnOff, chanSrv270, chanRevMotor))
 
-            if servo270Back is True:    # шагаем по диапазону servo270 от 0 до 270 в одну сторону
-                servo270 -= servo270Step
-                if servo270 <= 0:
-                    servo270 = 0
-                    servo270Back = False
-            else:                       # и в другую сторону
-                servo270 += servo270Step
-                if servo270 >= 270:
-                    servo270 = 270
-                    servo270Back = True
+# будем циклично изменять значения на каналах от 0 до максимума, а потом обратно
+onOff = False   # текущие значения для каналов
+servo270 = 0
+revMotor = 100
 
-            if revMotorBack is True:    # аналогично, но по диапазону rev motor от -100 до 100
-                revMotor -= revMotorStep
-                if revMotor < -100:
-                    revMotor = -100
-                    revMotorBack = False
-            else:
-                revMotor += revMotorStep
-                if revMotor > 100:
-                    revMotor = 100
-                    revMotorBack = True
-            print("Channel values: %d: %d\t%d: %d\t%d: %d"
-                  % (self.chanOnOff, onOff, self.chanSrv270, servo270, self.chanRevMotor, revMotor))
-            self.pwm.SetChannel(self.chanOnOff, onOff)
-            self.pwm.SetChannel(self.chanSrv270, servo270)
-            self.pwm.SetChannel(self.chanRevMotor, revMotor)
-            time.sleep(1)
-        print("Pwm channels stopped")
+servo270Back = False  # флаги по которому будем определять что по диапазону пора идти обратно
+revMotorBack = False
 
-    def Stop(self):
-        self.exit = True
-        print("Stopping thread")
+servo270Step = 90  # шаг с которым будем увеличивать/уменьшать значение на канале
+revMotorStep = 50
+
+# создаем объект, который будет работать с АЦП
+# указываем опорное напряжение, оно замеряется на первом пине Raspberry (обведено квадратом на шелкографии)
+adc = RPiPWM.Battery(vRef=3.28)
+adc.start()     # запускаем измерения
+
+# создаем объект для работы с дисплеем (еще возможные варианты - 128_32 и 96_16 - размеры дисплеев в пикселях)
+disp = RPiPWM.SSD1306_128_64()
+disp.Begin()    # запускаем дисплей
+disp.Clear()    # очищаем буффер изображения
+disp.Display()  # выводим пустую картинку на дисплей
+
+width = disp.width  # получаем высоту и ширину дисплея
+height = disp.height
+
+image = Image.new('1', (width, height))     # создаем изображение из библиотеки PIL для вывода на экран
+draw = ImageDraw.Draw(image)    # создаем объект, которым будем рисовать
+top = -2    # сдвигаем текст вверх на 2 пикселя
+x = 0   # сдвигаем весь текст к левому краю
+font = ImageFont.load_default()     # загружаем стандартный шрифт
 
 
-class Informer(threading.Thread):   # класс выводящий информацию на дисплей
-    def __init__(self):
-        threading.Thread.__init__(self)
-        print("Creating display")
-        self.disp = RPiPWM.SSD1306_128_64()     # создаем дисплей
-        self.disp.Begin()       # инициализируем его
-        self.disp.Clear()       # очищаем
-        self.disp.Display()     # выводим пустой кадр
-        self.disp.SetBrightness(0)
-        print("Creating ADC")
-        self.adc = RPiPWM.Battery(vRef=3.28, gain=7.66)     # создаем объект, получающий показания с АЦП
-        self.exit = False       # флаг для завершения тредов
+# функция, которая будет срабатывать при нажатии на кнопку
+def ButtonEvent(a):     # обязательно должна иметь один аргумент
+    print("Somebody pressed button!")
 
-        self.gpio = RPiPWM.Gpio()   # класс для работы с кнопкой и светодиодом
-        self.gpio.ButtonAddEvent(self.Button)   # привязываем к нажатию на кнопку функцию
 
-    def GetCpuTemperature(self):    # функция для получения температуры процессора
-        res = os.popen('vcgencmd measure_temp').readline()
-        return float(res.replace('temp=', '').replace('\'C\n', ''))
+# создаем объект для работы с кнопкой и светодиодом
+gpio = RPiPWM.Gpio()
+gpio.ButtonAddEvent(ButtonEvent)    # связываем нажатие на кнопку с функцией
 
-    def GetCpuLoad(self):   # получаем загрузку процессора в %
-        res = psutil.cpu_percent()
-        return res
+while True:
+    onOff = not onOff   # переключаем вкл/выкл
 
-    def GetIP(self):    # функция для получения собственного ip адреса
-        res = os.popen('hostname -I | cut -d\' \' -f1').readline().replace('\n', '')  # получаем IP, удаляем \n
-        return res
+    if servo270Back is False:       # идем по диапазону от 0 до 270
+        servo270 += servo270Step
+        if servo270 >= 270:         # если дошли до конца диапазона
+            servo270 = 270
+            servo270Back = True     # ставим флаг, что надо идти обратно
+    else:
+        servo270 -= servo270Step    # аналогично, только идем по диапазону в обратную сторону
+        if servo270 <= 0:
+            servo270 = 0
+            servo270Back = False
 
-    def GetBattery(self):   # функция для получения текущего значения с АЦП
-        return self.adc.GetVoltageFiltered()
+    if revMotorBack is False:
+        revMotor += revMotorStep
+        if revMotor > 100:
+            revMotor = 100
+            revMotorBack = True
+    else:
+        revMotor -= revMotorStep
+        if revMotor < -100:
+            revMotor = -100
+            revMotorBack = False
 
-    def Button(self, a):    # обязательно нужен один аргумент
-        print("Somebody pressed button!")
+    # задаем значения на каналах
+    pwm.SetChannel(chanOnOff, onOff)
+    pwm.SetChannel(chanSrv270, servo270)
+    pwm.SetChannel(chanRevMotor, revMotor)
+    print("Channel values: %d: %d\t%d: %d\t%d: %d"
+          % (chanOnOff, onOff, chanSrv270, servo270, chanRevMotor, revMotor))
 
-    def run(self):
-        print("Starting ADC")
-        self.adc.start()    # запускаем объект АЦП, чтобы он отслеживал уровень заряда батарейки и фильтровал значения
-        width = self.disp.width
-        height = self.disp.height
-        image = Image.new('1', (width, height))     # создаем изображение
-        draw = ImageDraw.Draw(image)    # создаем объект с помощью которого будем рисовать
-        draw.rectangle((0,0,width,height), outline=0, fill=0)   # прямоугольник, залитый черным чтобы очистить изображение
-        # несколько переменных для удобства рисования
-        padding = -2  # отступы
-        top = padding
-        x = 0   # сдвиг для всех строчек слева
-        font = ImageFont.load_default()  # загружаем стандартный шрифт
-        # можно подгрузить шрифт в формате ttf, если он лежит в той же папке
-        # font = ImageFont.truetype('BlaBla.ttf', 8)
-        IP = self.GetIP()   # получаем информацию об IP адресе
+    voltage = adc.GetVoltageFiltered()  # получаем напряжение аккумулятора
 
-        brightness = 0    # текущее значение яркости дисплея
-        brightnessRev = False
+    draw.rectangle((0, 0, width, height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
+    draw.text((x, top), "Some interesting info", font=font, fill=255)        # формируем текст
+    draw.text((x, top + 8), "Battery: "+str(voltage)+ " V", font=font, fill=255)     # высота строки - 8 пикселей
+    draw.text((x, top + 16), "Only english :(", font=font, fill=255)
+    draw.text((x, top + 24), "And 21 symbol", font=font, fill=255)
 
-        print("Starting display")
-        while not self.exit:
-            # очищаем изображение
-            draw.rectangle((0, 0, width, height), outline=0, fill=0)
-            # получаем сведения о системе
-            cpuTemp = str(self.GetCpuTemperature())
-            cpuLoad = str(self.GetCpuLoad())
-            battery = str(self.GetBattery())
+    disp.Image(image)   # записываем изображение в буффер
+    disp.Display()      # выводим его на экран
 
-            # циклично изменяем яркость дисплея от 0 до 250, потом обратно, с шагом 50
-            if brightnessRev:
-                brightness -= 50
-                if brightness < 0:
-                    brightness = 0
-                    brightnessRev = False
-            else:
-                brightness += 50
-                if brightness > 250:
-                    brightness = 250
-                    brightnessRev = True
+    gpio.LedToggle()    # переключаем светодиод
 
-            # формируем картинку для дисплея
-            draw.text((x, top), "IP: "+IP, font=font, fill=255)
-            draw.text((x, top + 8), "CPU: "+cpuLoad+" %, "+cpuTemp+"°C", font=font, fill=255)
-            draw.text((x, top + 16), "Battery: "+battery+" V", font=font, fill=255)
-            draw.text((x, top + 24), "Brightness: "+str(brightness), font=font, fill=255)
-
-            self.disp.SetBrightness(brightness)   # меняем яркость
-            # выводим изображение
-            self.disp.Image(image)
-            self.disp.Display()
-            self.gpio.LedToggle()   # переключаем светодиод
-            time.sleep(0.5)
-        self.adc.stop()
-        print("ADC and Display stopped")
-
-    def Stop(self):
-        self.exit = True
-
-info = Informer()
-pwm = Pwm()
-info.start()
-pwm.start()
-info.join()
-pwm.join()
+    time.sleep(1)
