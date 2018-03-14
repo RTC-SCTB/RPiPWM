@@ -17,6 +17,6 @@
 
 
 ### Полезные ссылки
-- Даташит для [MCP3221](http://ww1.microchip.com/downloads/en/DeviceDoc/20001732E.pdf)
-- Даташит для [PCA9685](https://cdn-shop.adafruit.com/datasheets/PCA9685.pdf)
-- Даташит для [SSD1336](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf)
+- Даташит для АЦП [MCP3221](http://ww1.microchip.com/downloads/en/DeviceDoc/20001732E.pdf)
+- Даташит для ШИМ контроллера [PCA9685](https://cdn-shop.adafruit.com/datasheets/PCA9685.pdf)
+- Даташит для дисплея [SSD1336](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf)

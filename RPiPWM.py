@@ -7,6 +7,35 @@ import threading
 
 ###
 '''
+Общий служебный класс, с помощью которого реализована работа с I2C
+'''
+###
+
+
+class _I2c:
+    def __init__(self):
+        self._bus = I2C.SMBus(1)
+
+    def ReadRaw(self, addr, cmd, len):    # чтение "сырых" данных из i2c
+        return self._bus.read_i2c_block_data(addr, cmd, len)
+
+    def ReadU8(self, addr, register):    # чтение unsigned byte
+        return self._bus.read_byte_data(addr, register) & 0xFF
+
+    def WriteByte(self, addr, value):   # (Writebyte)отправка байта в шину
+        return self._bus.write_byte(addr, value)
+
+    def WriteByteData(self, addr, register, value):    # (Write8)запись 8-битного значения в заданный регистр
+        value = value & 0xFF
+        self._bus.write_byte_data(addr, register, value)
+
+    def WriteList(self, addr, register, data):  # запись списка байтов в заданный регистр
+        for i in range(len(data)):
+            self._bus.write_byte_data(addr, register, data[i])
+
+
+###
+'''
 Класс для получения информации от одноканального АЦП MCP3221.
 При инициализации задаются значения: vRef - опорное напряжение (относительно которого происходит измерение),
 gain - коэффициент делителя напряжения (если он есть.
@@ -24,7 +53,7 @@ class Battery(threading.Thread):
         self._addr = 0x4D
         self._vRef = vRef
         self._gain = gain
-        self._i2c = I2C.SMBus(1)
+        self._i2c = _I2c()
         threading.Thread.__init__(self)
         self._exit = False  # флаг завершения тредов
         self._filteredVoltage = 0   # отфильтрованное значение напряжения
@@ -36,7 +65,7 @@ class Battery(threading.Thread):
             time.sleep(0.05)
 
     def _ReadRaw(self):    # чтение показаний АЦП
-        reading = self._i2c.read_i2c_block_data(self._addr, 0x00, 2)
+        reading = self._i2c.ReadRaw(self._addr, 0x00, 2)
         return (reading[0] << 8) + reading[1]
 
     def _ReadConverted(self):   # преобразование к напряжению, относительно опорного (после предделителя)
@@ -116,26 +145,18 @@ class PwmMode(IntEnum):     # список режимов работы
 
 class Pwm:
     def __init__(self):
-        self._i2c = I2C.SMBus(1)
+        self._i2c = _I2c()
         # инициализируем микросхему
-        self._Write8(_MODE2, _OUTDRV)
-        self._Write8(_MODE1, _ALLCALL)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
         time.sleep(0.005)
-        mode1 = self._ReadU8(_MODE1)    # читаем установленный режим
+        mode1 = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)  # читаем установленный режим
         mode1 = mode1 & ~_SLEEP     # будим
-        self._Write8(_MODE1, mode1)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, mode1)
         time.sleep(0.005)
         self._SetPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
         # словарь, содержащий номера каналов и выставленный режим
         self._channel = {}
-
-    def _Write8(self, register, value):  # запись 8битного значения в заданный регистр
-        value = value & 0xFF
-        self._i2c.write_byte_data(_PCA9685_ADDRESS, register, value)
-
-    def _ReadU8(self, register):    # чтение unsigned byte
-        result = self._i2c.read_byte_data(_PCA9685_ADDRESS, register) & 0xFF
-        return result
 
     def _SetPwmFreq(self, freqHz):  # устанавливает частоту ШИМ сигнала в Гц
         prescaleval = 25000000.0    # 25MHz
@@ -143,23 +164,24 @@ class Pwm:
         prescaleval /= freqHz
         prescaleval -= 1
         prescale = int(math.floor(prescaleval + 0.5))
-        oldmode = self._ReadU8(_MODE1)  # смотрим какой режим был у микросхемы
+        oldmode = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)    # смотрим какой режим был у микросхемы
         newmode = (oldmode & 0x7F) | 0x10   # отключаем внутреннее тактирование, чтобы внести изменения
-        self._Write8(_MODE1, newmode)
-        self._Write8(_PRESCALE, prescale)    # изменяем частоту
-        self._Write8(_MODE1, oldmode)    # включаем тактирование обратно
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, newmode)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _PRESCALE, prescale)  # изменяем частоту
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode)  # включаем тактирование обратно
         time.sleep(0.005)   # ждем пока оно включится
-        self._Write8(_MODE1, oldmode | 0x08)     # разрешаем микросхеме отвечать на subaddress 1
+        # разрешаем микросхеме отвечать на subaddress 1
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode | 0x08)
 
     def _SetPwm(self, channel, value):  # установка значения для канала
-        self._Write8(_LED0_ON_L + 4 * channel, 0 & 0xFF)  # момент включения в цикле
-        self._Write8(_LED0_ON_H + 4 * channel, 0 >> 8)
-        self._Write8(_LED0_OFF_L + 4 * channel, value & 0xFF)  # момент выключения в цикле
-        self._Write8(_LED0_OFF_H + 4 * channel, value >> 8)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_L + 4 * channel, 0 & 0xFF)   # момент включения в цикле
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * channel, 0 >> 8)
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * channel, value & 0xFF)  # момент выключения в цикле
+        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * channel, value >> 8)
 
     def Reset(self):    # программный сброс микросхемы
         val = 0x06 & 0xFF
-        self._i2c.write_byte(_PCA9685_ADDRESS, val)
+        self._i2c.WriteByte(_PCA9685_ADDRESS, val)
 
     def InitChannel(self, channel, mode):  # инициализация канала в определенном режиме
         if 0 <= channel <= 15:
@@ -243,26 +265,23 @@ _SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL = 0x2A
 
 
 class SSD1306Base(object):  # Базовый класс для работы с OLED дисплеями на базе SSD1306
-    def __init__(self, width, height, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
+    def __init__(self, width, height):
         self.width = width  # ширина и высота дисплея
         self.height = height
         self._pages = height//8     # строки дисплея
         self._buffer = [0]*(width*self._pages)  # буффер изображения (из нулей)
-        if i2cBus is None:
-            self._i2c = I2C.SMBus(1)
-        else:
-            self._i2c = i2cBus
+        self._i2c = _I2c()
 
     def _Initialize(self):
         raise NotImplementedError
 
     def _Command(self, c):  # Отправка байта команды дисплею
         control = 0x00
-        self._Write8(control, c)
+        self._i2c.WriteByteData(_SSD1306_I2C_ADDRESS, control, c)
 
     def _Data(self, c):  # Отправка байта данных дисплею
         control = 0x40
-        self._Write8(control, c)
+        self._i2c.WriteByteData(_SSD1306_I2C_ADDRESS, control, c)
 
     def Begin(self, vccstate=_SSD1306_SWITCHCAPVCC):    # инициализация дисплея
         self._vccstate = vccstate
@@ -279,7 +298,7 @@ class SSD1306Base(object):  # Базовый класс для работы с O
         # Выводим буффер данных
         for i in range(0, len(self._buffer), 16):
             control = 0x40
-            self._WriteList(control, self._buffer[i:i+16])
+            self._i2c.WriteList(_SSD1306_I2C_ADDRESS, control, self._buffer[i:i+16])
 
     def Image(self, image):     # выводит картинку созданную при помощи библиотеки PIL
         # картинка должна быть в режиме mode = 1 и совпадать по размеру с дисплеем
@@ -324,23 +343,11 @@ class SSD1306Base(object):  # Базовый класс для работы с O
                 contrast = 0xCF
         self.SetBrightness(contrast)
 
-    def _Write8(self, register, value):  # запись 8битного значения в заданный регистр
-        value = value & 0xFF
-        self._i2c.write_byte_data(_SSD1306_I2C_ADDRESS, register, value)
-
-    def _WriteList(self, register, data):   # запись списка байтов в заданный регистр
-        for i in range(len(data)):
-            self._i2c.write_byte_data(_SSD1306_I2C_ADDRESS, register, data[i])
-
-    def _ReadU8(self, register):    # чтение unsigned byte
-        result = self._i2c.read_byte_data(_SSD1306_I2C_ADDRESS, register) & 0xFF
-        return result
-
 
 class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pix
-    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
+    def __init__(self):
         # вызываем конструктор класса
-        super(SSD1306_128_64, self).__init__(128, 64, i2cBus, i2cAddr)
+        super(SSD1306_128_64, self).__init__(128, 64)
 
     def _Initialize(self):
         # инициализация конкретно для размера 128x64
@@ -380,9 +387,9 @@ class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pi
 
 
 class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pix
-    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
+    def __init__(self):
         # Вызываем конструктор класса
-        super(SSD1306_128_32, self).__init__(128, 32, i2cBus, i2cAddr)
+        super(SSD1306_128_32, self).__init__(128, 32)
 
     def _Initialize(self):
         # Инициализация конкретно для размера 128x32 pix
@@ -419,9 +426,9 @@ class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pi
 
 
 class SSD1306_96_16(SSD1306Base):
-    def __init__(self, i2cBus=None, i2cAddr=_SSD1306_I2C_ADDRESS):
+    def __init__(self):
         # Вызываем конструктор класса
-        super(SSD1306_96_16, self).__init__(96, 16, i2cBus, i2cAddr)
+        super(SSD1306_96_16, self).__init__(96, 16)
 
     def _Initialize(self):
         # Инициализация конкретно для размера 96x16 pix
