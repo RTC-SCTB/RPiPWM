@@ -10,27 +10,31 @@ from PIL import ImageFont
 # номера каналов, куда какой объект будет подключен
 chanOnOff = 0
 chanSrv180 = 1
+chanSrv270 = 2
 # драйверы обычно генерируют свои 5 вольт, которые могут вернуть на плату
 # поэтому их стоит подключать к каналам 12 - 15
-chanRevMotor = 2
+chanRevMotor = 12
 
 # создаем объекты для образца
 switch = RPiPWM.Switch(chanOnOff)       # на этом канале будут просто чередоваться высокий и низкий уровни
-servo = RPiPWM.Servo180(chanSrv180, extended=True)     # серва 180 градусов, почему-то моей потребовался широкий диапазон
+servo180 = RPiPWM.Servo180(chanSrv180, extended=True)     # серва 270 градусов, почему-то моей потребовался широкий диапазон
+servo270 = RPiPWM.Servo270(chanSrv270, extended=True)
 motor = RPiPWM.ReverseMotor(chanRevMotor)   # мотор с реверсом
 
-print("Initing channels: %d - On/Off, %d - Servo180, %d - Reverse Motor"
-      % (chanOnOff, chanSrv180, chanRevMotor))
+print("Initing channels: %d - On/Off, %d - Servo180, %d - Servo270, %d - Reverse Motor"
+      % (chanOnOff, chanSrv180, chanSrv270, chanRevMotor))
 
 # будем циклично изменять значения на каналах от 0 до максимума, а потом обратно
 switchState = False   # текущие значения для каналов
-servoValue = 0
+servo180Value = 0
+servo270Value = 0
 motorValue = 100
 
-servoBack = False  # флаги по которому будем определять что по диапазону пора идти обратно
+servo180Back = False  # флаги по которому будем определять что по диапазону пора идти обратно
+servo270Back = False
 revMotorBack = False
 
-servoStep = 45  # шаг с которым будем увеличивать/уменьшать значение на канале
+servoStep = 10  # шаг с которым будем увеличивать/уменьшать значение на канале
 revMotorStep = 50
 
 # создаем объект, который будет работать с АЦП
@@ -66,16 +70,28 @@ gpio.ButtonAddEvent(ButtonEvent)    # связываем нажатие на к�
 while True:
     switchState = not switchState   # переключаем вкл/выкл
 
-    if servoBack is False:       # идем по диапазону от 0 до 270
-        servoValue += servoStep
-        if servoValue >= 180:         # если дошли до конца диапазона
-            servoValue = 180
-            servoBack = True     # ставим флаг, что надо идти обратно
+    if servo180Back is False:       # идем по диапазону от 0 до 180
+        servo180Value += servoStep
+        if servo180Value >= 180:         # если дошли до конца диапазона
+            servo180Value = 180
+            servo180Back = True     # ставим флаг, что надо идти обратно
     else:
-        servoValue -= servoStep    # аналогично, только идем по диапазону в обратную сторону
-        if servoValue <= 0:
-            servoValue = 0
-            servoBack = False
+        servo180Value -= servoStep    # аналогично, только идем по диапазону в обратную сторону
+        if servo180Value <= 0:
+            servo180Value = 0
+            servo180Back = False
+
+    if servo270Back is False:
+        servo270Value += servoStep
+        if servo270Value >= 270:
+            servo270Value = 270
+            servo270Back = True
+    else:
+        servo270Value -= servoStep
+        if servo270Value <= 0:
+            servo270Value = 0
+            servo270Back = False
+
 
     if revMotorBack is False:
         motorValue += revMotorStep
@@ -87,15 +103,13 @@ while True:
         if motorValue < -100:
             motorValue = -100
             revMotorBack = False
-    print("Old channel values: %d: %d\t%d: %d\t%d: %d"
-          % (chanOnOff, switch.GetValue(), chanSrv180, servo.GetValue(), chanRevMotor, motor.GetValue()))
     # задаем значения на каналах
-    servo.SetValue(servoValue)
+    servo180.SetValue(servo180Value)
+    servo270.SetValue(servo270Value)
     switch.SetValue(switchState)
     motor.SetValue(motorValue)
-    print("New channel values: %d: %d\t%d: %d\t%d: %d"
-          % (chanOnOff, switchState, chanSrv180, servoValue, chanRevMotor, motorValue))
-    print()     # пустая строчка
+    print("New channel values: %d: %d\t%d: %d\t%d: %d\t%d: %d"
+          % (chanOnOff, switchState, chanSrv180, servo180Value, chanSrv270, servo270Value, chanRevMotor, motorValue))
     voltage = adc.GetVoltageFiltered()  # получаем напряжение аккумулятора
 
     draw.rectangle((0, 0, width, height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей

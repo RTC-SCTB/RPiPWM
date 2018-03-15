@@ -120,9 +120,12 @@ _OUTDRV = 0x04      # способ подключения светодиодов
 _min = 205  # 1 мс (~ 4096/20)
 _max = 410  # 2 мс (~ 4096*2/20)
 _range = _max - _min  # диапазон от min до max, нужен для вычислений
-_wideMin = 164  # 0.8 мс (~ _min*0.8)
-_wideMax = 451  # 2.2 мс (~ _max*1.1)
-_wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
+# _wideMin = 164  # 0.8 мс (~ _min*0.8)
+# _wideMax = 451  # 2.2 мс (~ _max*1.1)
+# _wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
+_wideMin = 103     # 0.5 мс (~ _min*0.5)   # тестово
+_wideMax = 513    # 2.5 мс (~_max*1.25)
+_wideRange = _wideMax - _wideMin
 
 ###
 '''
@@ -221,6 +224,8 @@ class PwmBase:
                     value += 100    # сдвигаем диапазон -100-100 -> 0-200
                     value *= _wideRange/200    # чуть изменяем 0-200 -> 0-range
                     value += _wideMin    # сдвигаем 0-range -> min-max
+                    # value *= _expWideRange/200    # чуть изменяем 0-200 -> 0-range
+                    # value += _expWideMin    # сдвигаем 0-range -> min-max
                 else:
                     if value < 0:   # обрезаем крайние значения
                         value = 0
@@ -229,6 +234,8 @@ class PwmBase:
                     self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
                     value *= _wideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     value += _wideMin    # сдвигаем диапазон 0-range -> min-max
+                    # value *= _expWideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
+                    # value += _expWideMin    # сдвигаем диапазон 0-range -> min-max
         self._SetPwm(int(value))  # устанавливаем значение
 
 ###
@@ -300,7 +307,7 @@ class ReverseMotor(PwmBase):    # класс для управления мот�
 class Switch(PwmBase):    # класс, реализующий возможность включать/выключать канал
     def __init__(self, channel, extended=False):
         global _pwmList
-        mode = PwmMode.reverseMotor
+        mode = PwmMode.onOff
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode
             super(Switch, self).__init__(channel, mode, extended)
