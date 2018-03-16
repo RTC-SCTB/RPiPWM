@@ -141,6 +141,16 @@ _wideRange = _wideMax - _wideMin
 _pwmIsInited = False    # глобальный флаг, по которому будем отслеживать, нужна ли микросхеме новая инициализация
 _pwmList= {}    # глобальный словарь, который содержит номер канала и выставленный режим
 
+
+class _PwmMode(IntEnum):    # список режимов работы
+    servo90 = 90            # серва 90 градусов
+    servo180 = 180          # серва 180 градусов
+    servo270 = 270          # серва 270 градусов
+    forwardMotor = 100      # мотор без реверса
+    reverseMotor = 4        # мотор с реверсом
+    onOff = 5               # вкл/выкл пина
+
+
 class PwmBase:
     def __init__(self, channel, mode, extended=False):
         global _pwmIsInited
@@ -187,7 +197,7 @@ class PwmBase:
         return self._value
 
     def SetValue(self, value):  # устанавливаем значение
-        if self._mode == PwmMode.onOff:   # если режим вкл/выкл (ему неважен расширенный диапазон)
+        if self._mode == _PwmMode.onOff:   # если режим вкл/выкл (ему неважен расширенный диапазон)
             if value < 0:
                 raise ValueError("Value must be True or False for On/Off mode")
             self._value = value     # запоминаем какое значение мы задаем (до всех преобразований)
@@ -197,7 +207,7 @@ class PwmBase:
                 value = 0
         else:
             if self._extended is False:     # если диапазон не расширенный
-                if self._mode == PwmMode.reverseMotor:  # если говорим о моторе с реверсом
+                if self._mode == _PwmMode.reverseMotor:  # если говорим о моторе с реверсом
                     if value < -100:    # обрезаем диапазон
                         value = -100
                     if value > 100:
@@ -215,7 +225,7 @@ class PwmBase:
                     value *= _range/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     value += _min    # сдвигаем диапазон 0-range -> min-max
             else:   # если диапазон расширенный
-                if self._mode == PwmMode.reverseMotor:  # если говорим о моторе с реверсом
+                if self._mode == _PwmMode.reverseMotor:  # если говорим о моторе с реверсом
                     if value < -100:    # обрезаем диапазон
                         value = -100
                     if value > 100:
@@ -237,18 +247,19 @@ class PwmBase:
                     # value *= _expWideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     # value += _expWideMin    # сдвигаем диапазон 0-range -> min-max
         self._SetPwm(int(value))  # устанавливаем значение
-
 ###
+###
+
+
 '''
 Классы для управления переферией. Параметры - номер канала и является ли диапазон расширенным.
 '''
-###
 
 
 class Servo90(PwmBase):     # Класс для управления сервой 90 град
     def __init__(self, channel, extended=False):
         global _pwmList
-        mode = PwmMode.servo90
+        mode = _PwmMode.servo90
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
             super(Servo90, self).__init__(channel, mode, extended)
@@ -259,7 +270,7 @@ class Servo90(PwmBase):     # Класс для управления серво�
 class Servo180(PwmBase):    # класс для управления сервой 180 град
     def __init__(self, channel, extended=False):
         global _pwmList
-        mode = PwmMode.servo180
+        mode = _PwmMode.servo180
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
             super(Servo180, self).__init__(channel, mode, extended)
@@ -270,7 +281,7 @@ class Servo180(PwmBase):    # класс для управления серво�
 class Servo270(PwmBase):    # класс для управления сервой 270 град
     def __init__(self, channel, extended=False):
         global _pwmList
-        mode = PwmMode.servo270
+        mode = _PwmMode.servo270
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
             super(Servo270, self).__init__(channel, mode, extended)
@@ -283,7 +294,7 @@ class ForwardMotor(PwmBase):    # класс для управления мот�
         if 0 <= channel < 12:
             warnings.warn("Better use channels 12-15. Be sure that driver does not return voltage.")
         global _pwmList
-        mode = PwmMode.forwardMotor
+        mode = _PwmMode.forwardMotor
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
             super(ForwardMotor, self).__init__(channel, mode, extended)
@@ -296,122 +307,22 @@ class ReverseMotor(PwmBase):    # класс для управления мот�
         if 0 <= channel < 12:
             warnings.warn("Better use channels 12-15. Be sure that driver does not return voltage.")
         global _pwmList
-        mode = PwmMode.reverseMotor
+        mode = _PwmMode.reverseMotor
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode
             super(ReverseMotor, self).__init__(channel, mode, extended)
         else:
             raise ValueError("This channel is already used!")
 
-
 class Switch(PwmBase):    # класс, реализующий возможность включать/выключать канал
     def __init__(self, channel, extended=False):
         global _pwmList
-        mode = PwmMode.onOff
+        mode = _PwmMode.onOff
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode
             super(Switch, self).__init__(channel, mode, extended)
         else:
             raise ValueError("This channel is already used!")
-###
-'''
-Класс для работы с миркосхемой, генерирующей ШИМ сигналы.
-Позволяет задавать ШИМ сигнал отдельно для каждого канала. Канал требует инициализации.
-Возможные значения для инициализации канала (берутся из соответствующего нумерованного списка):
-servo90 - для серв с углом поворота 90 градусов;
-servo180 - для серв с углом поворота 180 градусов;
-servo270 - для серв с углом поворота 270 градусов;
-reverseMotor - для подключения драйвера моторов, у которого крайние значения отвечают за разное направление вращения моторов.
-forwardMotor - для подключения драйвера моторов, у которого только одно направление вращения (от 0 до 100)
-'''
-###
-
-
-class PwmMode(IntEnum):     # список режимов работы
-    servo90 = 90            # серва 90 градусов
-    servo180 = 180          # серва 180 градусов
-    servo270 = 270          # серва 270 градусов
-    forwardMotor = 100      # мотор без реверса
-    reverseMotor = 4        # мотор с реверсом
-    onOff = 5               # вкл/выкл пина
-
-
-class Pwm:
-    def __init__(self):
-        self._i2c = _I2c()
-        # инициализируем микросхему
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
-        time.sleep(0.005)
-        mode1 = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)  # читаем установленный режим
-        mode1 = mode1 & ~_SLEEP     # будим
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, mode1)
-        time.sleep(0.005)
-        self._SetPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
-        # словарь, содержащий номера каналов и выставленный режим
-        self._channel = {}
-
-    def _SetPwmFreq(self, freqHz):  # устанавливает частоту ШИМ сигнала в Гц
-        prescaleval = 25000000.0    # 25MHz
-        prescaleval /= 4096.0       # 12-bit
-        prescaleval /= freqHz
-        prescaleval -= 1
-        prescale = int(math.floor(prescaleval + 0.5))
-        oldmode = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)    # смотрим какой режим был у микросхемы
-        newmode = (oldmode & 0x7F) | 0x10   # отключаем внутреннее тактирование, чтобы внести изменения
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, newmode)
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _PRESCALE, prescale)  # изменяем частоту
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode)  # включаем тактирование обратно
-        time.sleep(0.005)   # ждем пока оно включится
-        # разрешаем микросхеме отвечать на subaddress 1
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode | 0x08)
-
-    def _SetPwm(self, channel, value):  # установка значения для канала
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_L + 4 * channel, 0 & 0xFF)   # момент включения в цикле
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * channel, 0 >> 8)
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * channel, value & 0xFF)  # момент выключения в цикле
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * channel, value >> 8)
-
-    def Reset(self):    # программный сброс микросхемы
-        val = 0x06 & 0xFF
-        self._i2c.WriteByte(_PCA9685_ADDRESS, val)
-
-    def InitChannel(self, channel, mode):  # инициализация канала в определенном режиме
-        if 0 <= channel <= 15:
-            self._channel[channel] = mode
-        else:
-            raise ValueError("Channel number must be from 0 to 15 (inclusive).")
-
-    def SetChannel(self, channel, value):   # установка значения канала в зависимости от режима
-        try:
-            mode = self._channel[channel]
-        except KeyError:
-            raise ValueError("Channel haven't been inited!")
-        # если канал установлен на режим работы "в одну сторону" - сервы или мотор без реверса
-        if mode == PwmMode.reverseMotor:  # если говорим о моторе с реверсом
-            if value < -100:    # обрезаем диапазон
-                value = -100
-            if value > 100:
-                value = 100
-            value += 100    # сдвигаем диапазон -100-100 -> 0-200
-            value *= 205/200    # чуть изменяем 0-200 -> 0-205
-            value += 205    # сдвигаем 0-205 -> 205-410
-        elif mode == PwmMode.onOff:     # если режим вкл/выкл
-            if value < 0:
-                raise ValueError("Value must be True or False for On/Off mode")
-            if value is True:   # если надо включить (True) - зажигаем полностью
-                value = 4095
-            else:               # иначе выключаем
-                value = 0
-        else:   # если нужно устанавливать значение от 0 до максимального, в зависимости от режима
-            if value < 0:   # обрезаем крайние значения
-                value = 0
-            if value > mode.value:
-                value = mode.value
-            value *= 205/mode.value     # изменяем диапазон 0-mode -> 0-205
-            value += 205        # сдвигаем диапазон 0-205 -> 205-410
-        self._SetPwm(channel, int(value))  # устанавливаем значение
-    # TODO: убедиться с разными сервами, что все работает. Возможно добавить режим торможения для мотора с реверсом.
 
 
 ###
