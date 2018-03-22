@@ -50,12 +50,11 @@ GetBattery - Вызывает метод GetVoltage, домножает полу
 
 class Battery(threading.Thread):
     def __init__(self, vRef=3.3, gain=7.66):
-        threading.Thread.__init__(self)
         self._addr = 0x4D
         self._vRef = vRef
         self._gain = gain
         self._i2c = _I2c()
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
         self._exit = False  # флаг завершения тредов
         self._filteredVoltage = 0   # отфильтрованное значение напряжения
         self._K = 0.1   # коэффициент фильтрации
