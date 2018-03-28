@@ -160,6 +160,7 @@ class PwmBase:
         self._mode = mode
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
+        self._valueParrot = 0   # значение шим, которое установленно на канале в попугаях, понятных микросхеме
         if not _pwmIsInited:    # если микросхема еще не была инициализирована
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
@@ -191,6 +192,10 @@ class PwmBase:
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * self._channel, 0 >> 8)
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
+
+    def GetPwm(self):   # возвращает текущее значение ШИМ, выставленное на канале
+        # значение 205 примерно соответствует 1 мс, при частоте 50 Гц
+        return self._valueParrot / 205
 
     def GetValue(self):     # возвращает значение, установленное на канале
         return self._value
@@ -245,9 +250,8 @@ class PwmBase:
                     value += _wideMin    # сдвигаем диапазон 0-range -> min-max
                     # value *= _expWideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     # value += _expWideMin    # сдвигаем диапазон 0-range -> min-max
+        self._valueParrot = value   # запоминаем значение в попугаях, чтобы возвращать его в мс на канале
         self._SetPwm(int(value))  # устанавливаем значение
-###
-###
 
 
 '''
@@ -322,7 +326,6 @@ class Switch(PwmBase):    # класс, реализующий возможно�
             super(Switch, self).__init__(channel, mode, extended)
         else:
             raise ValueError("This channel is already used!")
-
 
 ###
 '''

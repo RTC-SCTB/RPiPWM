@@ -108,8 +108,8 @@ while True:
     servo270.SetValue(servo270Value)
     switch.SetValue(switchState)
     motor.SetValue(motorValue)
-    print("New channel values: %d: %d\t%d: %d\t%d: %d\t%d: %d"
-          % (chanOnOff, switchState, chanSrv180, servo180Value, chanSrv270, servo270Value, chanRevMotor, motorValue))
+    print("Channel %d:\t%d val,\t%.2f ms"
+          % (chanSrv180, servo180.GetValue(), servo180.GetPwm()))
     voltage = adc.GetVoltageFiltered()  # получаем напряжение аккумулятора
 
     draw.rectangle((0, 0, width, height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
