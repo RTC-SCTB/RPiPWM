@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import RPiPWM
 import time
-import os
-import psutil
 from PIL import Image       # библиотеки для рисования на дисплее
 from PIL import ImageDraw
 from PIL import ImageFont

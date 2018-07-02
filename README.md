@@ -10,13 +10,16 @@
 Подробное описание функций в файле **Description**.
 
 ### Необходимые модули
-Стандартные: time, enum, math, threading.  
+Стандартные: `time`, `enum`, `math`, `threading`.  
 Дополнительные:  
 - RPi.GPIO - для работы с GPIO Raspberry Pi  
 Устанавливается либо через pip3: `sudo pip3 install RPi.GPIO`, либо через apt: `sudo apt install python3-rpi.gpio`
 - smbus - для работы с шиной i2c  
 Устанавливается из репозитория: `sudo apt install python3-smbus`
 
+**ВАЖНО:** Для работы примера нужен дополнительный модуль, который не является необходимым для работы библиотеки.  
+- PIL - Python Imaging Library - модуль, используемый для создания изображений, которые выводятся на дисплей.  
+Устанавливается через pip3: `sudo pip3 install pillow`
 
 ### Полезные ссылки
 - Даташит для АЦП [MCP3221](http://ww1.microchip.com/downloads/en/DeviceDoc/20001732E.pdf)
