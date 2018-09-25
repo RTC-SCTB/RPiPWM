@@ -195,7 +195,7 @@ class PwmBase:
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
         self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
 
-    def SetPwm(self, value):    # установка значения на канал в мкс
+    def SetMcs(self, value):    # установка значения на канал в мкс
         if value > 20000:       # обрезаем диапазон - от 20 мс до 0 мс
             value = 20000
         if value < 0:
