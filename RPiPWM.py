@@ -208,9 +208,9 @@ class PwmBase:
         self._valueParrot = value   # запоминаем значение в попугаях, чтобы затем выводить его в мс на канале
         self._SetPwm(int(value))
 
-    def GetPwm(self):   # возвращает текущее значение ШИМ, выставленное на канале
+    def GetMcs(self):   # возвращает текущее значение длительности импульса, выставленное на канале, в мкс
         # значение 205 примерно соответствует 1 мс, при частоте 50 Гц
-        return self._valueParrot / _parrot_ms
+        return int((self._valueParrot / _parrot_ms)*1000)
 
     def GetValue(self):     # возвращает значение, установленное на канале
         return self._value
