@@ -287,14 +287,13 @@ class Servo90(PwmBase):     # Класс для управления серво�
 
 class Servo120(PwmBase):
     def __init__(self, channel, extended=False):
-        def __init__(self, channel, extended=False):
-            global _pwmList
-            mode = _PwmMode.servo120
-            if _pwmList.get(channel) is None:
-                _pwmList[channel] = mode  # отмечаем, что канал занят
-                super(Servo120, self).__init__(channel, mode, extended)
-            else:
-                raise ValueError("This channel is already used!")
+        global _pwmList
+        mode = _PwmMode.servo120
+        if _pwmList.get(channel) is None:
+            _pwmList[channel] = mode  # отмечаем, что канал занят
+            super(Servo120, self).__init__(channel, mode, extended)
+        else:
+            raise ValueError("This channel is already used!")
 
 
 class Servo180(PwmBase):    # класс для управления сервой 180 град
