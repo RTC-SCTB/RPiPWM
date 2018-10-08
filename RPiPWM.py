@@ -120,12 +120,9 @@ _parrot_ms = 205    # коэффициент преобразования 205 п
 _min = 205  # 1 мс (~ 4096/20)
 _max = 410  # 2 мс (~ 4096*2/20)
 _range = _max - _min  # диапазон от min до max, нужен для вычислений
-# _wideMin = 164  # 0.8 мс (~ _min*0.8)
-# _wideMax = 451  # 2.2 мс (~ _max*1.1)
-# _wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
-_wideMin = 103     # 0.5 мс (~ _min*0.5)   # тестово
-_wideMax = 513    # 2.5 мс (~_max*1.25)
-_wideRange = _wideMax - _wideMin
+_wideMin = 103  # 0.5 мс (~ _min*0.5)
+_wideMax = 513  # 2.5 мс (~_max*1.25)
+_wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
 
 ###
 '''
@@ -162,7 +159,6 @@ class PwmBase:
         self._mode = mode
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
-        self._valueParrot = 0   # значение шим, которое установленно на канале в попугаях, понятных микросхеме
         if not _pwmIsInited:    # если микросхема еще не была инициализирована
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
             self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
@@ -205,12 +201,14 @@ class PwmBase:
         value *= _parrot_ms     # приводим мс к попугаям которые затем задаются на ШИМ
         if value > 4095:        # обрезаем максимальное значение, чтобы микросхема не сходила с ума
             value = 4095
-        self._valueParrot = value   # запоминаем значение в попугаях, чтобы затем выводить его в мс на канале
         self._SetPwm(int(value))
 
     def GetMcs(self):   # возвращает текущее значение длительности импульса, выставленное на канале, в мкс
         # значение 205 примерно соответствует 1 мс, при частоте 50 Гц
-        return int((self._valueParrot / _parrot_ms)*1000)
+        reading_H = self._i2c.ReadU8(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel)
+        reading_L = self._i2c.ReadU8(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel)
+        result = (reading_H << 8) + reading_L
+        return int((result / _parrot_ms) * 1000)
 
     def GetValue(self):     # возвращает значение, установленное на канале
         return self._value
@@ -253,8 +251,6 @@ class PwmBase:
                     value += 100    # сдвигаем диапазон -100-100 -> 0-200
                     value *= _wideRange/200    # чуть изменяем 0-200 -> 0-range
                     value += _wideMin    # сдвигаем 0-range -> min-max
-                    # value *= _expWideRange/200    # чуть изменяем 0-200 -> 0-range
-                    # value += _expWideMin    # сдвигаем 0-range -> min-max
                 else:
                     if value < 0:   # обрезаем крайние значения
                         value = 0
@@ -263,9 +259,6 @@ class PwmBase:
                     self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
                     value *= _wideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     value += _wideMin    # сдвигаем диапазон 0-range -> min-max
-                    # value *= _expWideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
-                    # value += _expWideMin    # сдвигаем диапазон 0-range -> min-max
-        self._valueParrot = value   # запоминаем значение в попугаях, чтобы возвращать его в мс на канале
         self._SetPwm(int(value))  # устанавливаем значение
 
 
@@ -395,7 +388,7 @@ _SSD1306_VERTICAL_AND_RIGHT_HORIZONTAL_SCROLL = 0x29
 _SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL = 0x2A
 
 
-class SSD1306Base(object):  # Базовый класс для работы с OLED дисплеями на базе SSD1306
+class _SSD1306Base(object):  # Базовый класс для работы с OLED дисплеями на базе SSD1306
     def __init__(self, width, height):
         self.width = width  # ширина и высота дисплея
         self.height = height
@@ -475,7 +468,7 @@ class SSD1306Base(object):  # Базовый класс для работы с O
         self.SetBrightness(contrast)
 
 
-class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pix
+class SSD1306_128_64(_SSD1306Base):  # класс для дисплея 128*64 pix
     def __init__(self):
         # вызываем конструктор класса
         super(SSD1306_128_64, self).__init__(128, 64)
@@ -517,7 +510,7 @@ class SSD1306_128_64(SSD1306Base):  # класс для дисплея 128*64 pi
         self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
-class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pix
+class SSD1306_128_32(_SSD1306Base):  # класс для дисплея 128*32 pix
     def __init__(self):
         # Вызываем конструктор класса
         super(SSD1306_128_32, self).__init__(128, 32)
@@ -556,7 +549,7 @@ class SSD1306_128_32(SSD1306Base):  # класс для дисплея 128*32 pi
         self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
-class SSD1306_96_16(SSD1306Base):
+class SSD1306_96_16(_SSD1306Base):
     def __init__(self):
         # Вызываем конструктор класса
         super(SSD1306_96_16, self).__init__(96, 16)

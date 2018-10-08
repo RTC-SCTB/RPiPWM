@@ -15,8 +15,8 @@ chanRevMotor = 12
 
 # создаем объекты для образца
 switch = RPiPWM.Switch(chanOnOff)       # на этом канале будут просто чередоваться высокий и низкий уровни
-servo180 = RPiPWM.Servo180(chanSrv180, extended=True)     # серва 270 градусов, почему-то моей потребовался широкий диапазон
-servo270 = RPiPWM.Servo270(chanSrv270, extended=True)
+servo180 = RPiPWM.Servo180(chanSrv180, extended=True)
+servo270 = RPiPWM.Servo270(chanSrv270, extended=True)   # серва 270 градусов, почему-то моей потребовался широкий диапазон
 motor = RPiPWM.ReverseMotor(chanRevMotor)   # мотор с реверсом
 
 print("Initing channels: %d - On/Off, %d - Servo180, %d - Servo270, %d - Reverse Motor"
