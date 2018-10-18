@@ -6,90 +6,116 @@ import math
 import threading
 import warnings
 
-###
-'''
-Общий служебный класс, с помощью которого реализована работа с I2C
-'''
-###
-
 
 class _I2c:
+    """Общий служебный класс, с помощью которого реализована работа с I2C"""
     def __init__(self):
         self._bus = I2C.SMBus(1)
 
-    def ReadRaw(self, addr, cmd, len):    # чтение "сырых" данных из i2c
+    def readRaw(self, addr, cmd, len):
+        """
+        Чтение "сырых" данных из i2c
+        :param addr: адрес устройства
+        :param cmd: код комманды
+        :param len: сколько байт считать
+        :return: считанные данные
+        """
         return self._bus.read_i2c_block_data(addr, cmd, len)
 
-    def ReadU8(self, addr, register):    # чтение unsigned byte
+    def readU8(self, addr, register):
+        """
+        Чтение unsigned byte из i2c.
+        :param addr: адрес устройства
+        :param register: регистр для чтения
+        :return: считанные данные
+        """
         return self._bus.read_byte_data(addr, register) & 0xFF
 
-    def WriteByte(self, addr, value):   # (Writebyte)отправка байта в шину
+    def writeByte(self, addr, value):
+        """
+        Отправка одного байта данных в шину i2c.
+        :param addr: адрес устройства
+        :param value: значение для отправки
+        """
         return self._bus.write_byte(addr, value)
 
-    def WriteByteData(self, addr, register, value):    # (Write8)запись 8-битного значения в заданный регистр
+    def writeByteData(self, addr, register, value):
+        """
+        Запись одного байта данных в заданный регистр устройства.
+        :param addr: адрес устройства
+        :param register: регистр для записи
+        :param value: значение для записи
+        """
         value = value & 0xFF
         self._bus.write_byte_data(addr, register, value)
 
-    def WriteList(self, addr, register, data):  # запись списка байтов в заданный регистр
+    def writeList(self, addr, register, data):
+        """
+        Запись списка байтов в заданный регистр устройства.
+        :param addr: адрес устройства
+        :param register: регистр для записи
+        :param data: список данных
+        """
         for i in range(len(data)):
             self._bus.write_byte_data(addr, register, data[i])
 
 
-###
-'''
-Класс для получения информации от одноканального АЦП MCP3221.
-При инициализации задаются значения: vRef - опорное напряжение (относительно которого происходит измерение),
-gain - коэффициент делителя напряжения (если он есть.
-Методы:
-Read - читает информацию из шины I2C (2 байта измерения);
-GetVoltage - Вызывает метод Read, преобразует полученное значение в напряжение исходя из заданного опорного напряжения;
-GetBattery - Вызывает метод GetVoltage, домножает полученное напряжение на коэффициент делителя напряжения.
-'''
-###
-
-
 class Battery(threading.Thread):
+    """Класс для получения информации от одноканального АЦП MCP3221."""
     def __init__(self, vRef=3.3, gain=7.66):
+        """
+        Конструктор класса.
+        :param vRef: опорное напряжение (относительно которого происходит измерение)
+        :param gain: коэффициент делителя напряжения (если он есть)
+        """
         self._addr = 0x4D
         self._vRef = vRef
         self._gain = gain
         self._i2c = _I2c()
         threading.Thread.__init__(self, daemon=True)
-        self._exit = False  # флаг завершения тредов
+        self.__exit = False  # флаг завершения тредов
         self._filteredVoltage = 0   # отфильтрованное значение напряжения
         self._K = 0.1   # коэффициент фильтрации
 
     def run(self):
-        while not self._exit:    # 20 раз в секунду опрашивает АЦП, фильтрует значение
-            self._filteredVoltage = self._filteredVoltage * (1 - self._K) + self.GetVoltageInstant() * self._K
+        """Метод для threading. Запуск вычислений в отдельном потоке."""
+        while not self.__exit:    # 20 раз в секунду опрашивает АЦП, фильтрует значение
+            self._filteredVoltage = self._filteredVoltage * (1 - self._K) + self.getVoltageInstant() * self._K
             time.sleep(0.05)
 
-    def _ReadRaw(self):    # чтение показаний АЦП
-        reading = self._i2c.ReadRaw(self._addr, 0x00, 2)
+    def _readRaw(self):
+        """Чтение cырых показаний с АЦП - просто 2 байта."""
+        reading = self._i2c.readRaw(self._addr, 0x00, 2)
         return (reading[0] << 8) + reading[1]
 
-    def _ReadConverted(self):   # преобразование к напряжению, относительно опорного (после предделителя)
-        voltage = (self._ReadRaw() / 4095) * self._vRef  # 4095 - число разрядов АЦП
+    def _readConverted(self):
+        """Преобразование к напряжению, относительно опорного (после предделителя)"""
+        voltage = (self._readRaw() / 4095) * self._vRef  # 4095 - число разрядов АЦП
         return voltage
 
-    def GetVoltageInstant(self):  # возвращает моментальное значение напряжения аккумулятора с АЦП (до предделителя)
-        battery = self._ReadConverted() * self._gain
+    def getVoltageInstant(self):
+        """Возвращает моментальное значение напряжения аккумулятора с АЦП."""
+        battery = self._readConverted() * self._gain
         return round(battery, 2)
 
-    def stop(self):     # останавливает треды
-        self._exit = True
+    def stop(self):
+        """Остановка вычислений в отдельном потоке."""
+        self.__exit = True
 
-    def GetVoltageFiltered(self):   # возвращаяет отфильтрованное значение напряжения
+    def getVoltageFiltered(self):
+        """Возвращает отфильтрованное значение напряжения."""
         return round(self._filteredVoltage, 2)
 
-    def Calibrate(self, exactVoltage):  # подгоняет коэффциент делителя напряжения
+    def calibrate(self, exactVoltage):
+        """Подгонка коэффициента делитея напряжения."""
         value = 0
         for i in range(100):
-            value += self._ReadConverted()
+            value += self._readConverted()
             time.sleep(0.01)
         value /= 100
         self._gain = exactVoltage/value
     # TODO: возможно сделать калибровку более точной (но вроде как без нее все работает и так)
+
 
 # Регистры для работы с PCA9685
 _PCA9685_ADDRESS = 0x40
@@ -124,12 +150,6 @@ _wideMin = 103  # 0.5 мс (~ _min*0.5)
 _wideMax = 513  # 2.5 мс (~_max*1.25)
 _wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
 
-###
-'''
-Базовый класс для управления драйвером ШИМ.
-Параметры при инициализации - номер канала, режим работы канала и флаг, нужен ли расширенный диапазон (800 - 2200 мкс)
-'''
-###
 '''
 ################################  ВНИМАНИЕ  ########################################
 #############  Я ПОКА НЕ ЗНАЮ КАК СДЕЛАТЬ БЕЗ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ  ###############
@@ -150,7 +170,14 @@ class _PwmMode(IntEnum):    # список режимов работы
 
 
 class PwmBase:
+    """Базовый класс для управления драйвером ШИМ (PCA9685)"""
     def __init__(self, channel, mode, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала устройства
+        :param mode: режим работы (какое устройство подключается)
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmIsInited
         self._i2c = _I2c()  # объект для общения с i2c шиной
         if (channel > 15) or (channel < 0):
@@ -160,38 +187,50 @@ class PwmBase:
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
         if not _pwmIsInited:    # если микросхема еще не была инициализирована
-            self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
-            self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
+            self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
+            self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
             time.sleep(0.005)
-            mode1 = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)  # читаем установленный режим
+            mode1 = self._i2c.readU8(_PCA9685_ADDRESS, _MODE1)  # читаем установленный режим
             mode1 = mode1 & ~_SLEEP  # будим
-            self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, mode1)
+            self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, mode1)
             time.sleep(0.005)
-            self._SetPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
+            self._setPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
             _pwmIsInited = True     # поднимаем флаг, что микросхема инициализирована
 
-    def _SetPwmFreq(self, freqHz):  # устанавливает частоту ШИМ сигнала в Гц
+    def _setPwmFreq(self, freqHz):
+        """
+        Установка частоты ШИМ сигнала.
+        :param freqHz: Частота ШИМ сигнала (Гц)
+        """
         prescaleval = 25000000.0    # 25MHz
         prescaleval /= 4096.0       # 12-bit
         prescaleval /= freqHz
         prescaleval -= 1
         prescale = int(math.floor(prescaleval + 0.5))
-        oldmode = self._i2c.ReadU8(_PCA9685_ADDRESS, _MODE1)    # смотрим какой режим был у микросхемы
+        oldmode = self._i2c.readU8(_PCA9685_ADDRESS, _MODE1)    # смотрим какой режим был у микросхемы
         newmode = (oldmode & 0x7F) | 0x10   # отключаем внутреннее тактирование, чтобы внести изменения
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, newmode)
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _PRESCALE, prescale)  # изменяем частоту
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode)  # включаем тактирование обратно
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, newmode)
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _PRESCALE, prescale)  # изменяем частоту
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, oldmode)  # включаем тактирование обратно
         time.sleep(0.005)   # ждем пока оно включится
         # разрешаем микросхеме отвечать на subaddress 1
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _MODE1, oldmode | 0x08)
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, oldmode | 0x08)
 
-    def _SetPwm(self, value):   # установка значения на канал
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_L + 4 * self._channel, 0 & 0xFF)   # момент включения в цикле
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * self._channel, 0 >> 8)
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
-        self._i2c.WriteByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
+    def _setPwm(self, value):
+        """
+        Установка длительности импульса ШИМ для канала.
+        :param value: Длительность (в попугаях микросхемы. 205 "попугаев" ~ 1000 мкс)
+        """
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_ON_L + 4 * self._channel, 0 & 0xFF)   # момент включения в цикле
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_ON_H + 4 * self._channel, 0 >> 8)
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
+        self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
 
-    def SetMcs(self, value):    # установка значения на канал в мкс
+    def setMcs(self, value):
+        """
+        Установка длительности импульса ШИМ в мкс
+        :param value: Длительность импульса в мкс
+        """
         if value > 20000:       # обрезаем диапазон - от 20 мс до 0 мс
             value = 20000
         if value < 0:
@@ -201,19 +240,24 @@ class PwmBase:
         value *= _parrot_ms     # приводим мс к попугаям которые затем задаются на ШИМ
         if value > 4095:        # обрезаем максимальное значение, чтобы микросхема не сходила с ума
             value = 4095
-        self._SetPwm(int(value))
+        self._setPwm(int(value))
 
-    def GetMcs(self):   # возвращает текущее значение длительности импульса, выставленное на канале, в мкс
-        # значение 205 примерно соответствует 1 мс, при частоте 50 Гц
-        reading_H = self._i2c.ReadU8(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel)
-        reading_L = self._i2c.ReadU8(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel)
+    def getMcs(self):
+        """Возвращает текущее значение длительности импульса ШИМ, выставленное на канале (в мкс)."""
+        reading_H = self._i2c.readU8(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel)
+        reading_L = self._i2c.readU8(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel)
         result = (reading_H << 8) + reading_L
         return int((result / _parrot_ms) * 1000)
 
-    def GetValue(self):     # возвращает значение, установленное на канале
+    def getValue(self):
+        """Возвращает последнее значение, установленное на канале."""
         return self._value
 
-    def SetValue(self, value):  # устанавливаем значение
+    def setValue(self, value):  # устанавливаем значение
+        """
+        Установка значения для канала
+        :param value: значение зависит от режима работы канала (угол, скорость и т.п.)
+        """
         if self._mode == _PwmMode.onOff:   # если режим вкл/выкл (ему неважен расширенный диапазон)
             if value < 0:
                 raise ValueError("Value must be True or False for On/Off mode")
@@ -259,7 +303,7 @@ class PwmBase:
                     self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
                     value *= _wideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
                     value += _wideMin    # сдвигаем диапазон 0-range -> min-max
-        self._SetPwm(int(value))  # устанавливаем значение
+        self._setPwm(int(value))  # устанавливаем значение
 
 
 '''
@@ -267,8 +311,14 @@ class PwmBase:
 '''
 
 
-class Servo90(PwmBase):     # Класс для управления сервой 90 град
+class Servo90(PwmBase):
+    """Класс для управления сервой 90 град"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmList
         mode = _PwmMode.servo90
         if _pwmList.get(channel) is None:
@@ -279,7 +329,13 @@ class Servo90(PwmBase):     # Класс для управления серво�
 
 
 class Servo120(PwmBase):
+    """Класс для управления сервой 120 град"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmList
         mode = _PwmMode.servo120
         if _pwmList.get(channel) is None:
@@ -289,8 +345,14 @@ class Servo120(PwmBase):
             raise ValueError("This channel is already used!")
 
 
-class Servo180(PwmBase):    # класс для управления сервой 180 град
+class Servo180(PwmBase):
+    """Класс для управления сервой 180 град"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmList
         mode = _PwmMode.servo180
         if _pwmList.get(channel) is None:
@@ -300,8 +362,14 @@ class Servo180(PwmBase):    # класс для управления серво�
             raise ValueError("This channel is already used!")
 
 
-class Servo270(PwmBase):    # класс для управления сервой 270 град
+class Servo270(PwmBase):
+    """Класс для управления сервой 270 град"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmList
         mode = _PwmMode.servo270
         if _pwmList.get(channel) is None:
@@ -311,8 +379,14 @@ class Servo270(PwmBase):    # класс для управления серво�
             raise ValueError("This channel is already used!")
 
 
-class ForwardMotor(PwmBase):    # класс для управления мотором с одним направлением
+class ForwardMotor(PwmBase):
+    """Класс для управления мотором с одним направлением"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         if 0 <= channel < 12:
             warnings.warn("Better use channels 12-15. Be sure that driver does not return voltage.")
         global _pwmList
@@ -324,8 +398,14 @@ class ForwardMotor(PwmBase):    # класс для управления мот�
             raise ValueError("This channel is already used!")
 
 
-class ReverseMotor(PwmBase):    # класс для управления мотором с реверсом
+class ReverseMotor(PwmBase):
+    """Класс для управления мотором с реверсом"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         if 0 <= channel < 12:
             warnings.warn("Better use channels 12-15. Be sure that driver does not return voltage.")
         global _pwmList
@@ -336,8 +416,14 @@ class ReverseMotor(PwmBase):    # класс для управления мот�
         else:
             raise ValueError("This channel is already used!")
 
-class Switch(PwmBase):    # класс, реализующий возможность включать/выключать канал
+class Switch(PwmBase):
+    """Класс реализующий только логические 0 и 1 на канале"""
     def __init__(self, channel, extended=False):
+        """
+        Конструктор класса
+        :param channel: номер канала
+        :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
+        """
         global _pwmList
         mode = _PwmMode.onOff
         if _pwmList.get(channel) is None:
@@ -346,11 +432,10 @@ class Switch(PwmBase):    # класс, реализующий возможно�
         else:
             raise ValueError("This channel is already used!")
 
-###
+
 '''
 Классы для работы с дисплеем.
 '''
-###
 # Регистры для работы с SSD1306
 _SSD1306_I2C_ADDRESS = 0x3C    # 011110+SA0+RW - 0x3C or 0x3D
 _SSD1306_SETCONTRAST = 0x81
@@ -388,8 +473,14 @@ _SSD1306_VERTICAL_AND_RIGHT_HORIZONTAL_SCROLL = 0x29
 _SSD1306_VERTICAL_AND_LEFT_HORIZONTAL_SCROLL = 0x2A
 
 
-class _SSD1306Base(object):  # Базовый класс для работы с OLED дисплеями на базе SSD1306
+class _SSD1306Base(object):
+    """Базовый класс для работы с OLED дисплеями на базе SSD1306"""
     def __init__(self, width, height):
+        """
+        Конструктор класса
+        :param width: ширина дисплея, в пикселях
+        :param height: высота дисплея, в пикселях
+        """
         self.width = width  # ширина и высота дисплея
         self.height = height
         self._pages = height//8     # строки дисплея
@@ -401,11 +492,11 @@ class _SSD1306Base(object):  # Базовый класс для работы с 
 
     def _Command(self, c):  # Отправка байта команды дисплею
         control = 0x00
-        self._i2c.WriteByteData(_SSD1306_I2C_ADDRESS, control, c)
+        self._i2c.writeByteData(_SSD1306_I2C_ADDRESS, control, c)
 
     def _Data(self, c):  # Отправка байта данных дисплею
         control = 0x40
-        self._i2c.WriteByteData(_SSD1306_I2C_ADDRESS, control, c)
+        self._i2c.writeByteData(_SSD1306_I2C_ADDRESS, control, c)
 
     def Begin(self, vccstate=_SSD1306_SWITCHCAPVCC):    # инициализация дисплея
         self._vccstate = vccstate
@@ -422,7 +513,7 @@ class _SSD1306Base(object):  # Базовый класс для работы с 
         # Выводим буффер данных
         for i in range(0, len(self._buffer), 16):
             control = 0x40
-            self._i2c.WriteList(_SSD1306_I2C_ADDRESS, control, self._buffer[i:i+16])
+            self._i2c.writeList(_SSD1306_I2C_ADDRESS, control, self._buffer[i:i + 16])
 
     def Image(self, image):     # выводит картинку созданную при помощи библиотеки PIL
         # картинка должна быть в режиме mode = 1 и совпадать по размеру с дисплеем

@@ -102,13 +102,13 @@ while True:
             motorValue = -100
             revMotorBack = False
     # задаем значения на каналах
-    servo180.SetValue(servo180Value)
-    servo270.SetValue(servo270Value)
-    switch.SetValue(switchState)
-    motor.SetValue(motorValue)
+    servo180.setValue(servo180Value)
+    servo270.setValue(servo270Value)
+    switch.setValue(switchState)
+    motor.setValue(motorValue)
     print("Channel %d:\t%d val,\t%.2f ms"
-          % (chanSrv180, servo180.GetValue(), servo180.GetMcs()))
-    voltage = adc.GetVoltageFiltered()  # получаем напряжение аккумулятора
+          % (chanSrv180, servo180.getValue(), servo180.getMcs()))
+    voltage = adc.getVoltageFiltered()  # получаем напряжение аккумулятора
 
     draw.rectangle((0, 0, width, height), outline=0, fill=0)  # прямоугольник, залитый черным - очищаем дисплей
     draw.text((x, top), "Some interesting info", font=font, fill=255)        # формируем текст
