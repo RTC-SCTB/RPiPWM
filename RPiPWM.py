@@ -481,8 +481,8 @@ class _SSD1306Base(object):
         :param width: ширина дисплея, в пикселях
         :param height: высота дисплея, в пикселях
         """
-        self.width = width  # ширина и высота дисплея
-        self.height = height
+        self._width = width  # ширина и высота дисплея
+        self._height = height
         self._pages = height//8     # строки дисплея
         self._buffer = [0]*(width*self._pages)  # буффер изображения (из нулей)
         self._i2c = _I2c()
@@ -501,6 +501,13 @@ class _SSD1306Base(object):
         control = 0x40
         self._i2c.writeByteData(_SSD1306_I2C_ADDRESS, control, c)
 
+    def getSize(self):
+        """
+        Возвращает ширину и высоту дисплея
+        :return: width, height
+        """
+        return self._width, self._height
+
     def begin(self, vccstate=_SSD1306_SWITCHCAPVCC):
         """Включение дисплея"""
         self._vccstate = vccstate
@@ -511,7 +518,7 @@ class _SSD1306Base(object):
         """Вывод программного буфера дисплея на физическое устройство"""
         self._command(_SSD1306_COLUMNADDR)  # задаем нумерацию столбцов
         self._command(0)                    # Начало столбцов (0 = сброс)
-        self._command(self.width - 1)       # адрес последнего столбца
+        self._command(self._width - 1)       # адрес последнего столбца
         self._command(_SSD1306_PAGEADDR)    # задаем адрес страниц (строк)
         self._command(0)                    # Начало строк (0 = сброс)
         self._command(self._pages - 1)      # адрес последней строки
@@ -528,14 +535,14 @@ class _SSD1306Base(object):
         if image.mode != '1':
             raise ValueError('image must be in mode 1.')
         imWidth, imHeight = image.size
-        if imWidth != self.width or imHeight != self.height:
-            raise ValueError('image must be same dimensions as display ({0}x{1})'.format(self.width, self.height))
+        if imWidth != self._width or imHeight != self._height:
+            raise ValueError('image must be same dimensions as display ({0}x{1})'.format(self._width, self._height))
         pix = image.load()  # выгружаем пиксели из картинки
         # проходим через память чтобы записать картинку в буффер
         index = 0
         for page in range(self._pages):
             # идем по оси x (колонны)
-            for x in range(self.width):
+            for x in range(self._width):
                 bits = 0
                 for bit in [0, 1, 2, 3, 4, 5, 6, 7]:    # быстрее чем range
                     bits = bits << 1
@@ -546,7 +553,7 @@ class _SSD1306Base(object):
 
     def clear(self):
         """Очистка буффера изображения"""
-        self._buffer = [0]*(self.width*self._pages)
+        self._buffer = [0]*(self._width * self._pages)
 
     def setBrightness(self, contrast: int):    # установка яркости дисплея от 0 до 255
         """

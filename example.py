@@ -46,8 +46,7 @@ disp.begin()    # запускаем дисплей
 disp.clear()    # очищаем буффер изображения
 disp.display()  # выводим пустую картинку на дисплей
 
-width = disp.width  # получаем высоту и ширину дисплея
-height = disp.height
+width, height = disp.getSize()  # получаем высоту и ширину дисплея
 
 image = Image.new('1', (width, height))     # создаем изображение из библиотеки PIL для вывода на экран
 draw = ImageDraw.Draw(image)    # создаем объект, которым будем рисовать
