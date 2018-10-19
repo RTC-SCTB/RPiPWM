@@ -12,7 +12,7 @@ class _I2c:
     def __init__(self):
         self._bus = I2C.SMBus(1)
 
-    def readRaw(self, addr, cmd, len):
+    def readRaw(self, addr: int, cmd: int, len: int):
         """
         Чтение "сырых" данных из i2c
         :param addr: адрес устройства
@@ -22,7 +22,7 @@ class _I2c:
         """
         return self._bus.read_i2c_block_data(addr, cmd, len)
 
-    def readU8(self, addr, register):
+    def readU8(self, addr: int, register: int):
         """
         Чтение unsigned byte из i2c.
         :param addr: адрес устройства
@@ -31,7 +31,7 @@ class _I2c:
         """
         return self._bus.read_byte_data(addr, register) & 0xFF
 
-    def writeByte(self, addr, value):
+    def writeByte(self, addr: int, value: int):
         """
         Отправка одного байта данных в шину i2c.
         :param addr: адрес устройства
@@ -39,7 +39,7 @@ class _I2c:
         """
         return self._bus.write_byte(addr, value)
 
-    def writeByteData(self, addr, register, value):
+    def writeByteData(self, addr: int, register: int, value: int):
         """
         Запись одного байта данных в заданный регистр устройства.
         :param addr: адрес устройства
@@ -49,7 +49,7 @@ class _I2c:
         value = value & 0xFF
         self._bus.write_byte_data(addr, register, value)
 
-    def writeList(self, addr, register, data):
+    def writeList(self, addr: int, register: int, data: list):
         """
         Запись списка байтов в заданный регистр устройства.
         :param addr: адрес устройства
@@ -106,7 +106,7 @@ class Battery(threading.Thread):
         """Возвращает отфильтрованное значение напряжения."""
         return round(self._filteredVoltage, 2)
 
-    def calibrate(self, exactVoltage):
+    def calibrate(self, exactVoltage: float):
         """Подгонка коэффициента делитея напряжения."""
         value = 0
         for i in range(100):
@@ -171,7 +171,7 @@ class _PwmMode(IntEnum):    # список режимов работы
 
 class PwmBase:
     """Базовый класс для управления драйвером ШИМ (PCA9685)"""
-    def __init__(self, channel, mode, extended=False):
+    def __init__(self, channel: int, mode, extended=False):
         """
         Конструктор класса
         :param channel: номер канала устройства
@@ -197,7 +197,7 @@ class PwmBase:
             self._setPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
             _pwmIsInited = True     # поднимаем флаг, что микросхема инициализирована
 
-    def _setPwmFreq(self, freqHz):
+    def _setPwmFreq(self, freqHz: float):
         """
         Установка частоты ШИМ сигнала.
         :param freqHz: Частота ШИМ сигнала (Гц)
@@ -216,7 +216,7 @@ class PwmBase:
         # разрешаем микросхеме отвечать на subaddress 1
         self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, oldmode | 0x08)
 
-    def _setPwm(self, value):
+    def _setPwm(self, value: int):
         """
         Установка длительности импульса ШИМ для канала.
         :param value: Длительность (в попугаях микросхемы. 205 "попугаев" ~ 1000 мкс)
@@ -226,7 +226,7 @@ class PwmBase:
         self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel, value & 0xFF)  # момент выключения в цикле
         self._i2c.writeByteData(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel, value >> 8)
 
-    def setMcs(self, value):
+    def setMcs(self, value: int):
         """
         Установка длительности импульса ШИМ в мкс
         :param value: Длительность импульса в мкс
@@ -253,7 +253,7 @@ class PwmBase:
         """Возвращает последнее значение, установленное на канале."""
         return self._value
 
-    def setValue(self, value):  # устанавливаем значение
+    def setValue(self, value: int):  # устанавливаем значение
         """
         Установка значения для канала
         :param value: значение зависит от режима работы канала (угол, скорость и т.п.)
@@ -487,41 +487,49 @@ class _SSD1306Base(object):
         self._buffer = [0]*(width*self._pages)  # буффер изображения (из нулей)
         self._i2c = _I2c()
 
-    def _Initialize(self):
+    def _initialize(self):
+        """Инициализация дисплея"""
         raise NotImplementedError
 
-    def _Command(self, c):  # Отправка байта команды дисплею
+    def _command(self, c: int):
+        """Отправка байта команды дисплею"""
         control = 0x00
         self._i2c.writeByteData(_SSD1306_I2C_ADDRESS, control, c)
 
-    def _Data(self, c):  # Отправка байта данных дисплею
+    def _data(self, c: int):  # Отправка байта данных дисплею
+        """Отправка байта данных дисплею"""
         control = 0x40
         self._i2c.writeByteData(_SSD1306_I2C_ADDRESS, control, c)
 
-    def Begin(self, vccstate=_SSD1306_SWITCHCAPVCC):    # инициализация дисплея
+    def begin(self, vccstate=_SSD1306_SWITCHCAPVCC):
+        """Включение дисплея"""
         self._vccstate = vccstate
-        self._Initialize()
-        self._Command(_SSD1306_DISPLAYON)
+        self._initialize()
+        self._command(_SSD1306_DISPLAYON)
 
-    def Display(self):  # вывод программного буффера дисплея на физическое устройство
-        self._Command(_SSD1306_COLUMNADDR)   # задаем нумерацию столбцов
-        self._Command(0)                     # Начало столбцов (0 = сброс)
-        self._Command(self.width - 1)          # адрес последнего столбца
-        self._Command(_SSD1306_PAGEADDR)     # задаем адрес страниц (строк)
-        self._Command(0)                     # Начало строк (0 = сброс)
-        self._Command(self._pages - 1)         # адрес последней строки
-        # Выводим буффер данных
-        for i in range(0, len(self._buffer), 16):
+    def display(self):
+        """Вывод программного буфера дисплея на физическое устройство"""
+        self._command(_SSD1306_COLUMNADDR)  # задаем нумерацию столбцов
+        self._command(0)                    # Начало столбцов (0 = сброс)
+        self._command(self.width - 1)       # адрес последнего столбца
+        self._command(_SSD1306_PAGEADDR)    # задаем адрес страниц (строк)
+        self._command(0)                    # Начало строк (0 = сброс)
+        self._command(self._pages - 1)      # адрес последней строки
+
+        for i in range(0, len(self._buffer), 16):   # Выводим буффер данных
             control = 0x40
             self._i2c.writeList(_SSD1306_I2C_ADDRESS, control, self._buffer[i:i + 16])
 
-    def Image(self, image):     # выводит картинку созданную при помощи библиотеки PIL
-        # картинка должна быть в режиме mode = 1 и совпадать по размеру с дисплеем
+    def image(self, image):
+        """
+        Вывод картинки, созданной с помощью библиотеки PIL
+        :param image: картинка должна быть в режиме mode = 1 и совпадать по размеру с дисплеем
+        """
         if image.mode != '1':
-            raise ValueError('Image must be in mode 1.')
+            raise ValueError('image must be in mode 1.')
         imWidth, imHeight = image.size
         if imWidth != self.width or imHeight != self.height:
-            raise ValueError('Image must be same dimensions as display ({0}x{1})'.format(self.width, self.height))
+            raise ValueError('image must be same dimensions as display ({0}x{1})'.format(self.width, self.height))
         pix = image.load()  # выгружаем пиксели из картинки
         # проходим через память чтобы записать картинку в буффер
         index = 0
@@ -536,176 +544,197 @@ class _SSD1306Base(object):
                 self._buffer[index] = bits
                 index += 1
 
-    def Clear(self):    # очищает буффер изображения
+    def clear(self):
+        """Очистка буффера изображения"""
         self._buffer = [0]*(self.width*self._pages)
 
-    def SetBrightness(self, contrast):    # установка яркости дисплея от 0 до 255
+    def setBrightness(self, contrast: int):    # установка яркости дисплея от 0 до 255
+        """
+        Установка яркости дисплея
+        :param contrast: значение от 0 до 255
+        """
         if contrast < 0 or contrast > 255:
             raise ValueError('Contrast must be value from 0 to 255 (inclusive).')
-        self._Command(_SSD1306_SETCONTRAST)
-        self._Command(contrast)
+        self._command(_SSD1306_SETCONTRAST)
+        self._command(contrast)
 
-    # Подстраивает значение яркости. входное значение True или False.
-    # Если True - задает значение в зависимости от источника питания (внешний, или от шины)
-    # Если False - опускает до нуля
     # ИМХО - бесполезная функция, когда есть предыдущая
-    def _Dim(self, dim):
+    def _Dim(self, dim: bool):
+        """
+        Подстройка значения яркости.
+        :param dim: True - значение в зависимости от источника питания. False - минимальная яркость
+        :return:
+        """
         contrast = 0
         if not dim:
             if self._vccstate == _SSD1306_EXTERNALVCC:
                 contrast = 0x9F
             else:
                 contrast = 0xCF
-        self.SetBrightness(contrast)
+        self.setBrightness(contrast)
 
 
-class SSD1306_128_64(_SSD1306Base):  # класс для дисплея 128*64 pix
+class SSD1306_128_64(_SSD1306Base):
+    """Класс для дисплея 128x64 pix"""
     def __init__(self):
         # вызываем конструктор класса
         super(SSD1306_128_64, self).__init__(128, 64)
 
-    def _Initialize(self):
-        # инициализация конкретно для размера 128x64
-        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self._Command(0x80)                          # предлагаемоое соотношение 0x80
-        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self._Command(0x3F)
-        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self._Command(0x0)                           # без отступов
-        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
+    def _initialize(self):
+        """Инициализация для дисплея размером 128x64"""
+        self._command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._command(0x80)                          # предлагаемоое соотношение 0x80
+        self._command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._command(0x3F)
+        self._command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._command(0x0)                           # без отступов
+        self._command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x10)
+            self._command(0x10)
         else:
-            self._Command(0x14)
-        self._Command(_SSD1306_MEMORYMODE)           # 0x20
-        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self._Command(_SSD1306_SEGREMAP | 0x1)
-        self._Command(_SSD1306_COMSCANDEC)
-        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self._Command(0x12)
-        self._Command(_SSD1306_SETCONTRAST)          # 0x81
+            self._command(0x14)
+        self._command(_SSD1306_MEMORYMODE)           # 0x20
+        self._command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._command(_SSD1306_SEGREMAP | 0x1)
+        self._command(_SSD1306_COMSCANDEC)
+        self._command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._command(0x12)
+        self._command(_SSD1306_SETCONTRAST)          # 0x81
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x9F)
+            self._command(0x9F)
         else:
-            self._Command(0xCF)
-        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._command(0xCF)
+        self._command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x22)
+            self._command(0x22)
         else:
-            self._Command(0xF1)
-        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self._Command(0x40)
-        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._command(0xF1)
+        self._command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._command(0x40)
+        self._command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
 class SSD1306_128_32(_SSD1306Base):  # класс для дисплея 128*32 pix
+    """Класс для дисплея 128x32 pix"""
     def __init__(self):
         # Вызываем конструктор класса
         super(SSD1306_128_32, self).__init__(128, 32)
 
-    def _Initialize(self):
-        # Инициализация конкретно для размера 128x32 pix
-        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self._Command(0x80)                          # предлагаемоое соотношение 0x80
-        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self._Command(0x1F)
-        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self._Command(0x0)                           # без отступов
-        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
+    def _initialize(self):
+        """Инициализация для дисплея размером 128x32"""
+        self._command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._command(0x80)                          # предлагаемоое соотношение 0x80
+        self._command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._command(0x1F)
+        self._command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._command(0x0)                           # без отступов
+        self._command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x10)
+            self._command(0x10)
         else:
-            self._Command(0x14)
-        self._Command(_SSD1306_MEMORYMODE)           # 0x20
-        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self._Command(_SSD1306_SEGREMAP | 0x1)
-        self._Command(_SSD1306_COMSCANDEC)
-        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self._Command(0x02)
-        self._Command(_SSD1306_SETCONTRAST)          # 0x81
-        self._Command(0x8F)
-        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._command(0x14)
+        self._command(_SSD1306_MEMORYMODE)           # 0x20
+        self._command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._command(_SSD1306_SEGREMAP | 0x1)
+        self._command(_SSD1306_COMSCANDEC)
+        self._command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._command(0x02)
+        self._command(_SSD1306_SETCONTRAST)          # 0x81
+        self._command(0x8F)
+        self._command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x22)
+            self._command(0x22)
         else:
-            self._Command(0xF1)
-        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self._Command(0x40)
-        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._command(0xF1)
+        self._command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._command(0x40)
+        self._command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
 class SSD1306_96_16(_SSD1306Base):
+    """Класс для дисплея 96x16 pix"""
     def __init__(self):
         # Вызываем конструктор класса
         super(SSD1306_96_16, self).__init__(96, 16)
 
-    def _Initialize(self):
-        # Инициализация конкретно для размера 96x16 pix
-        self._Command(_SSD1306_DISPLAYOFF)           # 0xAE
-        self._Command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
-        self._Command(0x60)                          # предлагаемоое соотношение 0x60
-        self._Command(_SSD1306_SETMULTIPLEX)         # 0xA8
-        self._Command(0x0F)
-        self._Command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
-        self._Command(0x0)                           # без отступов
-        self._Command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
-        self._Command(_SSD1306_CHARGEPUMP)           # 0x8D
+    def _initialize(self):
+        """Инициализация для дисплея размером 96x16"""
+        self._command(_SSD1306_DISPLAYOFF)           # 0xAE
+        self._command(_SSD1306_SETDISPLAYCLOCKDIV)   # 0xD5
+        self._command(0x60)                          # предлагаемоое соотношение 0x60
+        self._command(_SSD1306_SETMULTIPLEX)         # 0xA8
+        self._command(0x0F)
+        self._command(_SSD1306_SETDISPLAYOFFSET)     # 0xD3
+        self._command(0x0)                           # без отступов
+        self._command(_SSD1306_SETSTARTLINE | 0x0)   # начинаем строки с 0
+        self._command(_SSD1306_CHARGEPUMP)           # 0x8D
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x10)
+            self._command(0x10)
         else:
-            self._Command(0x14)
-        self._Command(_SSD1306_MEMORYMODE)           # 0x20
-        self._Command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
-        self._Command(_SSD1306_SEGREMAP | 0x1)
-        self._Command(_SSD1306_COMSCANDEC)
-        self._Command(_SSD1306_SETCOMPINS)           # 0xDA
-        self._Command(0x02)
-        self._Command(_SSD1306_SETCONTRAST)          # 0x81
-        self._Command(0x8F)
-        self._Command(_SSD1306_SETPRECHARGE)         # 0xd9
+            self._command(0x14)
+        self._command(_SSD1306_MEMORYMODE)           # 0x20
+        self._command(0x00)                          # иначе работает неправильно (0x0 act like ks0108)
+        self._command(_SSD1306_SEGREMAP | 0x1)
+        self._command(_SSD1306_COMSCANDEC)
+        self._command(_SSD1306_SETCOMPINS)           # 0xDA
+        self._command(0x02)
+        self._command(_SSD1306_SETCONTRAST)          # 0x81
+        self._command(0x8F)
+        self._command(_SSD1306_SETPRECHARGE)         # 0xd9
         if self._vccstate == _SSD1306_EXTERNALVCC:
-            self._Command(0x22)
+            self._command(0x22)
         else:
-            self._Command(0xF1)
-        self._Command(_SSD1306_SETVCOMDETECT)        # 0xDB
-        self._Command(0x40)
-        self._Command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
-        self._Command(_SSD1306_NORMALDISPLAY)        # 0xA6
+            self._command(0xF1)
+        self._command(_SSD1306_SETVCOMDETECT)        # 0xDB
+        self._command(0x40)
+        self._command(_SSD1306_DISPLAYALLON_RESUME)  # 0xA4
+        self._command(_SSD1306_NORMALDISPLAY)        # 0xA6
 
 
-###
 '''
 Класс для работы с кнопкой и светодиодом.
 При создании класса инициализируются пины.
 '''
-###
-_chanButton = 20
+_chanButton = 20    # пины по умолчанию, возможно в будущем будут меняться
 _chanLed = 21
 
 
 class Gpio:
+    """Класс для работы с кнопкой и светодиодом"""
     def __init__(self):   # флаг, по которому будем очищать (или нет) GPIO
         GPIO.setwarnings(False)  # очищаем, если кто-то еще использовал GPIO воизбежание ошибок
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(_chanButton, GPIO.IN, pull_up_down = GPIO.PUD_OFF)
         GPIO.setup(_chanLed, GPIO.OUT, initial=GPIO.LOW)
 
-    # добавление функции, которая срабатывает при нажатии на кнопку, у функции обязательно должен быть один аргумент, который ему передает GPIO (см. пример)
-    def ButtonAddEvent(self, foo):
-        if foo is not None:
+    def buttonAddEvent(self, foo):
+        """
+        Добавление функции, которая срабатывает при нажатии на кнопку.
+        :param foo: Передаваемая функция, обязательно должна иметь один аргумент, который ей передаст GPIO (см. пример)
+        """
+        if foo is not None and callable(foo):
             GPIO.add_event_detect(_chanButton, GPIO.FALLING, callback = foo, bouncetime = 200)
+        else:
+            raise TypeError("Parameter must be callable function!")
 
-    def LedSet(self, value):    # включает или выключает светодиод в зависимости от заданного значения
+    def ledSet(self, value: bool):
+        """
+        Включение/выключение светодиода.
+        :param value: True или False - соответственно вкл и выкл.
+        :return:
+        """
         GPIO.output(_chanLed, value)
 
-    def LedToggle(self):    # переключает состояние светодиода
+    def ledToggle(self):
+        """Переключение состояния светодиода"""
         GPIO.output(_chanLed, not GPIO.input(_chanLed))
 
-    def CleanUp(self):
+    def cleanUp(self):
+        """Очистка GPIO при закрытии программы"""
         GPIO.cleanup()
