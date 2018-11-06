@@ -186,15 +186,19 @@ class PwmBase:
         self._mode = mode
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
-        if _global_freq is None:    # если микросхема еще не была инициализирована, запоминаем значение
-            if isinstance(freq, PwmFreq):
-                self._freq = freq       # частота ШИМ сигнала
-            else:
-                raise ValueError("freq must be set as PwmFreq.H* !!")
-            _global_freq = freq
-        else:                       # иначе предупреждаем, что частота уже была задана, и фиксируем ее
-            warnings.warn("Frequency was already set! Current frequency is: {} Hz".format(int(_global_freq)))
-            self._freq = _global_freq
+
+        if not isinstance(freq, PwmFreq):
+            raise ValueError("freq must be set as PwmFreq.H* !!")
+        else:
+            if _global_freq is None:    # если частота еще не была задана - задаем
+                self._freq = freq
+                _global_freq = freq
+            elif _global_freq == freq:  # если была задана такой же - задаем
+                self._freq = freq
+            else:                       # если была задана другой - ругаемся
+                warnings.warn("Frequency was already set! Current frequency is: {} Hz".format(int(_global_freq)))
+                self._freq = _global_freq
+
         # при соответствующей частоте получаем:
         # 4096 - весь период, в зависимости от частоты это может быть 20, 8, 4 мс при 50, 125, 250 Гц соответственно
         self._parrot_ms = int(4096*self._freq/1000)
