@@ -141,22 +141,13 @@ _ALLCALL = 0x01     # PCA9685 будет отвечать на запрос вс
 _INVRT = 0x10       # инверсный или неинверсный выход сигнала на микросхеме
 _OUTDRV = 0x04      # способ подключения светодиодов (см. даташит, нам это вроде не надо)
 
-# при частоте ШИМ 50 Гц (20 мс) получаем
-_parrot_ms = 205    # коэффициент преобразования 205 попугаев ~ 1 мс
-_min = 205  # 1 мс (~ 4096/20)
-_max = 410  # 2 мс (~ 4096*2/20)
-_range = _max - _min  # диапазон от min до max, нужен для вычислений
-_wideMin = 103  # 0.5 мс (~ _min*0.5)
-_wideMax = 513  # 2.5 мс (~_max*1.25)
-_wideRange = _wideMax - _wideMin    # аналогично, но тут расширенный диапазон
-
 '''
 ################################  ВНИМАНИЕ  ########################################
 #############  Я ПОКА НЕ ЗНАЮ КАК СДЕЛАТЬ БЕЗ ГЛОБАЛЬНЫХ ПЕРЕМЕННЫХ  ###############
 ################################  МНЕ ЖАЛЬ  ########################################
 '''
 _pwmIsInited = False    # глобальный флаг, по которому будем отслеживать, нужна ли микросхеме новая инициализация
-_pwmList= {}    # глобальный словарь, который содержит номер канала и выставленный режим
+_pwmList = {}    # глобальный словарь, который содержит номер канала и выставленный режим
 
 
 class _PwmMode(IntEnum):    # список режимов работы
@@ -169,16 +160,25 @@ class _PwmMode(IntEnum):    # список режимов работы
     onOff = 5               # вкл/выкл пина
 
 
+class PwmFreq(IntEnum):     # список возможных частот работы
+    H50 = 50                # 50 Гц
+    H125 = 125              # 125 Гц
+    H250 = 250              # 250 Гц
+
+
+_global_freq = None  # глобальная переменная, содержащая информацию о текущей частоте работы микросхемы
+
+
 class PwmBase:
     """Базовый класс для управления драйвером ШИМ (PCA9685)"""
-    def __init__(self, channel: int, mode, extended=False):
+    def __init__(self, channel: int, mode, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала устройства
         :param mode: режим работы (какое устройство подключается)
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
-        global _pwmIsInited
+        global _pwmIsInited, _global_freq
         self._i2c = _I2c()  # объект для общения с i2c шиной
         if (channel > 15) or (channel < 0):
             raise ValueError("Channel number must be from 0 to 15 (inclusive).")
@@ -186,6 +186,24 @@ class PwmBase:
         self._mode = mode
         self._extended = extended
         self._value = 0     # значение, которе установлено на канале
+        if _global_freq is None:    # если микросхема еще не была инициализирована, запоминаем значение
+            if isinstance(freq, PwmFreq):
+                self._freq = freq       # частота ШИМ сигнала
+            else:
+                raise ValueError("freq must be set as PwmFreq.H* !!")
+            _global_freq = freq
+        else:                       # иначе предупреждаем, что частота уже была задана, и фиксируем ее
+            warnings.warn("Frequency was already set! Current frequency is: {} Hz".format(int(_global_freq)))
+            self._freq = _global_freq
+        # при соответствующей частоте получаем:
+        # 4096 - весь период, в зависимости от частоты это может быть 20, 8, 4 мс при 50, 125, 250 Гц соответственно
+        self._parrot_ms = int(4096*self._freq/1000)
+        self._min = self._parrot_ms     # минимальное значение = 1 мс
+        self._max = self._parrot_ms*2   # максимальное значение = 2 мс
+        self._range = self._max - self._min     # диапазон от min до max, нужен для вычислений
+        self._wideMin = int(self._min/2)        # при расширенном диапазоне минимум = 0.5 мс
+        self._wideMax = self._wideMin*5         # при расширенном диапазоне максимум = 2.5 мс
+        self._wideRange = self._wideMax - self._wideMin     # аналогично, но тут расширенный диапазон
         if not _pwmIsInited:    # если микросхема еще не была инициализирована
             self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE2, _OUTDRV)
             self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, _ALLCALL)
@@ -194,10 +212,10 @@ class PwmBase:
             mode1 = mode1 & ~_SLEEP  # будим
             self._i2c.writeByteData(_PCA9685_ADDRESS, _MODE1, mode1)
             time.sleep(0.005)
-            self._setPwmFreq(50)    # устанавливаем частоту сигнала 50 Гц
+            self._setPwmFreq(self._freq)    # устанавливаем частоту сигнала
             _pwmIsInited = True     # поднимаем флаг, что микросхема инициализирована
 
-    def _setPwmFreq(self, freqHz: float):
+    def _setPwmFreq(self, freqHz: PwmFreq):
         """
         Установка частоты ШИМ сигнала.
         :param freqHz: Частота ШИМ сигнала (Гц)
@@ -231,14 +249,17 @@ class PwmBase:
         Установка длительности импульса ШИМ в мкс
         :param value: Длительность импульса в мкс
         """
-        if value > 20000:       # обрезаем диапазон - от 20 мс до 0 мс
-            value = 20000
+        max_mcs = 1/self._freq  # максимальая длительность импульса в зависимости от частоты (в секундах)
+        max_mcs *= 1000000      # максимальная длительность импульса в микросекунднах
+
+        if value > max_mcs:     # обрезаем диапазон - от 0 до максимального
+            value = max_mcs
         if value < 0:
             value = 0
         self._value = value     # запоминаем значение до преобразований
         value /= 1000           # приводим мкс к мс
-        value *= _parrot_ms     # приводим мс к попугаям которые затем задаются на ШИМ
-        if value > 4095:        # обрезаем максимальное значение, чтобы микросхема не сходила с ума
+        value *= self._parrot_ms    # приводим мс к попугаям которые затем задаются на ШИМ
+        if value > 4095:            # обрезаем максимальное значение, чтобы микросхема не сходила с ума
             value = 4095
         self._setPwm(int(value))
 
@@ -247,7 +268,7 @@ class PwmBase:
         reading_H = self._i2c.readU8(_PCA9685_ADDRESS, _LED0_OFF_H + 4 * self._channel)
         reading_L = self._i2c.readU8(_PCA9685_ADDRESS, _LED0_OFF_L + 4 * self._channel)
         result = (reading_H << 8) + reading_L
-        return int((result / _parrot_ms) * 1000)
+        return int((result / self._parrot_ms) * 1000)
 
     def getValue(self):
         """Возвращает последнее значение, установленное на канале."""
@@ -275,16 +296,16 @@ class PwmBase:
                         value = 100
                     self._value = value     # запоминаем какое значение мы задаем (до всех преобразований)
                     value += 100    # сдвигаем диапазон -100-100 -> 0-200
-                    value *= _range/200    # чуть изменяем 0-200 -> 0-range
-                    value += _min    # сдвигаем 0-range -> min-max
+                    value *= self._range/200    # чуть изменяем 0-200 -> 0-range
+                    value += self._min          # сдвигаем 0-range -> min-max
                 else:
                     if value < 0:   # обрезаем крайние значения
                         value = 0
                     if value > self._mode.value:
                         value = self._mode.value
-                    self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
-                    value *= _range/self._mode.value   # изменяем диапазон 0-mode -> 0-range
-                    value += _min    # сдвигаем диапазон 0-range -> min-max
+                    self._value = value     # запоминаем какое значение мы задаем (до всех преобразований)
+                    value *= self._range/self._mode.value   # изменяем диапазон 0-mode -> 0-range
+                    value += self._min      # сдвигаем диапазон 0-range -> min-max
             else:   # если диапазон расширенный
                 if self._mode == _PwmMode.reverseMotor:  # если говорим о моторе с реверсом
                     if value < -100:    # обрезаем диапазон
@@ -293,98 +314,103 @@ class PwmBase:
                         value = 100
                     self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
                     value += 100    # сдвигаем диапазон -100-100 -> 0-200
-                    value *= _wideRange/200    # чуть изменяем 0-200 -> 0-range
-                    value += _wideMin    # сдвигаем 0-range -> min-max
+                    value *= self._wideRange/200    # чуть изменяем 0-200 -> 0-range
+                    value += self._wideMin      # сдвигаем 0-range -> min-max
                 else:
                     if value < 0:   # обрезаем крайние значения
                         value = 0
                     if value > self._mode.value:
                         value = self._mode.value
                     self._value = value  # запоминаем какое значение мы задаем (до всех преобразований)
-                    value *= _wideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
-                    value += _wideMin    # сдвигаем диапазон 0-range -> min-max
+                    value *= self._wideRange/self._mode.value   # изменяем диапазон 0-mode -> 0-range
+                    value += self._wideMin      # сдвигаем диапазон 0-range -> min-max
         self._setPwm(int(value))  # устанавливаем значение
 
 
 '''
-Классы для управления переферией. Параметры - номер канала и является ли диапазон расширенным.
+Классы для управления переферией. Параметры - номер канала, частота и является ли диапазон расширенным
 '''
 
 
 class Servo90(PwmBase):
     """Класс для управления сервой 90 град"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         global _pwmList
         mode = _PwmMode.servo90
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
-            super(Servo90, self).__init__(channel, mode, extended)
+            super(Servo90, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 
 class Servo120(PwmBase):
     """Класс для управления сервой 120 град"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         global _pwmList
         mode = _PwmMode.servo120
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode  # отмечаем, что канал занят
-            super(Servo120, self).__init__(channel, mode, extended)
+            super(Servo120, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 
 class Servo180(PwmBase):
     """Класс для управления сервой 180 град"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         global _pwmList
         mode = _PwmMode.servo180
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
-            super(Servo180, self).__init__(channel, mode, extended)
+            super(Servo180, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 
 class Servo270(PwmBase):
     """Класс для управления сервой 270 град"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         global _pwmList
         mode = _PwmMode.servo270
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
-            super(Servo270, self).__init__(channel, mode, extended)
+            super(Servo270, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 
 class ForwardMotor(PwmBase):
     """Класс для управления мотором с одним направлением"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         if 0 <= channel < 12:
@@ -393,17 +419,18 @@ class ForwardMotor(PwmBase):
         mode = _PwmMode.forwardMotor
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode    # отмечаем, что канал занят
-            super(ForwardMotor, self).__init__(channel, mode, extended)
+            super(ForwardMotor, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 
 class ReverseMotor(PwmBase):
     """Класс для управления мотором с реверсом"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         if 0 <= channel < 12:
@@ -412,23 +439,24 @@ class ReverseMotor(PwmBase):
         mode = _PwmMode.reverseMotor
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode
-            super(ReverseMotor, self).__init__(channel, mode, extended)
+            super(ReverseMotor, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
 class Switch(PwmBase):
     """Класс реализующий только логические 0 и 1 на канале"""
-    def __init__(self, channel, extended=False):
+    def __init__(self, channel, freq=PwmFreq.H50, extended=False):
         """
         Конструктор класса
         :param channel: номер канала
+        :param freq: частота работы
         :param extended: флаг расширенного режима работы (0.5 - 2.5 мс, вместо 1 - 2 мс)
         """
         global _pwmList
         mode = _PwmMode.onOff
         if _pwmList.get(channel) is None:
             _pwmList[channel] = mode
-            super(Switch, self).__init__(channel, mode, extended)
+            super(Switch, self).__init__(channel, mode, freq, extended)
         else:
             raise ValueError("This channel is already used!")
 
